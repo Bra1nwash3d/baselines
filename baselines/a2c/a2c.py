@@ -16,6 +16,7 @@ from baselines.a2c.utils import Scheduler, make_path, find_trainable_variables
 from baselines.a2c.policies import CnnPolicy
 from baselines.a2c.utils import cat_entropy, mse
 
+
 class Model(object):
 
     def __init__(self, policy, ob_space, ac_space, nenvs, nsteps, nstack, num_procs,
@@ -67,27 +68,37 @@ class Model(object):
             )
             return policy_loss, value_loss, policy_entropy
 
-        def save(save_path):
+        def save(save_path, file_name, log=False):
+            if log:
+                logger.info("Saving to ", save_path, file_name)
             ps = sess.run(params)
             make_path(save_path)
-            joblib.dump(ps, save_path)
+            joblib.dump(ps, save_path+file_name)
 
-        def load(load_path):
-            loaded_params = joblib.load(load_path)
-            restores = []
-            for p, loaded_p in zip(params, loaded_params):
-                restores.append(p.assign(loaded_p))
-            ps = sess.run(restores)
+        def load(load_path, file_name, log=True):
+            try:
+                loaded_params = joblib.load(load_path+file_name)
+                restores = []
+                for p, loaded_p in zip(params, loaded_params):
+                    restores.append(p.assign(loaded_p))
+                ps = sess.run(restores)
+                if log:
+                    logger.info("Loaded from ", load_path, file_name)
+                return True
+            except FileNotFoundError:
+                logger.warn("Loading failed, path does not exist! ", load_path, file_name)
+            return False
 
         self.train = train
         self.train_model = train_model
         self.step_model = step_model
         self.step = step_model.step
         self.value = step_model.value
-        self.initial_state = step_model.initial_state
+        self.initial_state = step_model.initial_state()
         self.save = save
         self.load = load
         tf.global_variables_initializer().run(session=sess)
+
 
 class Runner(object):
 
@@ -154,27 +165,34 @@ class Runner(object):
         mb_masks = mb_masks.flatten()
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
-def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear', epsilon=1e-5, alpha=0.99, gamma=0.99, log_interval=100):
+
+def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
+          vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear',
+          epsilon=1e-5, alpha=0.99, gamma=0.99, log_interval=100,
+          save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
     nenvs = env.num_envs
     ob_space = env.observation_space
     ac_space = env.action_space
-    num_procs = len(env.remotes) # HACK
+    num_procs = len(env.remotes)  # HACK
     model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=nenvs, nsteps=nsteps, nstack=nstack, num_procs=num_procs, ent_coef=ent_coef, vf_coef=vf_coef,
         max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps, lrschedule=lrschedule)
+    model.load(save_path, save_name)
     runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma)
 
     nbatch = nenvs*nsteps
     tstart = time.time()
-    for update in range(1, total_timesteps//nbatch+1):
+    total_updates = total_timesteps//nbatch+1
+    for update in range(1, total_updates):
         obs, states, rewards, masks, actions, values = runner.run()
         policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
-        nseconds = time.time()-tstart
-        fps = int((update*nbatch)/nseconds)
         if update % log_interval == 0 or update == 1:
+            nseconds = time.time()-tstart
+            fps = int((update*nbatch)/nseconds)
             ev = explained_variance(values, rewards)
+            rem_time = (nseconds * total_updates / update) - nseconds
             logger.record_tabular("nupdates", update)
             logger.record_tabular("total_timesteps", update*nbatch)
             logger.record_tabular("fps", fps)
@@ -182,7 +200,9 @@ def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), vf_c
             logger.record_tabular("value_loss", float(value_loss))
             logger.record_tabular("explained_variance", float(ev))
             logger.dump_tabular()
-    env.close()
+            logger.info("Time since start: \t%.2fs" % nseconds)
+            logger.info("ETA: \t\t\t\t%.2fs" % rem_time)
+            model.save(save_path, save_name)
 
-if __name__ == '__main__':
-    main()
+    model.save(save_path, save_name)
+    env.close()
