@@ -1,19 +1,9 @@
 #!/usr/bin/env python
-import time
-
 from baselines.a2c.a2c import play
+from baselines.a2c.run_atari import str_to_policy
 from baselines.a2c.policies import CnnPolicy, LstmPolicy, LnLstmPolicy, DncPolicy
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.path_util import get_model_path
-
-
-def str_to_policy(policy):
-    return {
-        'cnn': CnnPolicy,
-        'lstm': LstmPolicy,
-        'lnlstm': LnLstmPolicy,
-        'dnc': DncPolicy,
-    }.get(policy, DncPolicy)
 
 
 def play_atari(env_id, seed, policy, save_path, num_episodes):
@@ -33,7 +23,6 @@ def main():
     parser.add_argument('--num-episodes', type=int, default=5)
     parser.add_argument('--training', type=int, default=-1)
     args = parser.parse_args()
-    t0 = time.time()
     model_path = get_model_path('a2c', args.policy, args.env, training=args.training)
     if model_path:
         play_atari(args.env,
