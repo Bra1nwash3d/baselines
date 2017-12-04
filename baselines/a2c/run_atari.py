@@ -1,13 +1,17 @@
 #!/usr/bin/env python
-import os, logging, gym, time
-from baselines import logger
-from baselines.common import set_global_seeds
+import gym
+import logging
+import os
+import time
+
 from baselines import bench
+from baselines import logger
 from baselines.a2c.a2c import learn
-from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
-from baselines.common.atari_wrappers import make_atari, wrap_deepmind, EpisodicLifeEnv
 from baselines.a2c.policies import CnnPolicy, LstmPolicy, LnLstmPolicy, DncPolicy
-from common.util import init_next_training
+from baselines.common import set_global_seeds
+from baselines.common.atari_wrappers import make_atari, wrap_deepmind
+from baselines.common.path_util import init_next_training
+from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 
 
 def str_to_policy(policy):

@@ -1,5 +1,5 @@
-from common.util import get_log_paths
-from common.plot import plot_monitors_merged, plot_progress_merged, plot_monitors_individually
+from baselines.common.path_util import get_log_paths
+from baselines.common.plot_util import plot_monitors_merged, plot_progress_merged, plot_monitors_individually
 
 
 def main():
