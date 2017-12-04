@@ -55,7 +55,7 @@ def main():
     parser.add_argument('--num-timesteps', type=int, default=int(1*10e5))
     args = parser.parse_args()
     t0 = time.time()
-    model_path, log_path = init_next_training('a2c', args.policy)
+    model_path, log_path = init_next_training('a2c', args.policy, args.env)
     logger.configure(dir=log_path)
     train(args.env,
           num_timesteps=args.num_timesteps,

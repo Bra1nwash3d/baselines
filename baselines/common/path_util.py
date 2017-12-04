@@ -3,40 +3,43 @@ import shutil
 import json
 
 
-def _basic_path(algorithm_name, policy_name, escapes=2):
-    return os.path.abspath('.'+''.join(['/..' for i in range(escapes)])+'/saves/'+algorithm_name+'/'+policy_name)+'/'
+def _basic_path(algorithm_name, policy_name, env_id, escapes=2):
+    return os.path.abspath('.'+''.join(['/..' for i in range(escapes)])+
+                           '/saves/'+algorithm_name+'/'+policy_name)+'/'+env_id+'/'
 
 
-def _meta_info_file(algorithm_name, policy_name, escapes=2):
-    return _basic_path(algorithm_name, policy_name, escapes) + 'meta.json'
+def _meta_info_file(algorithm_name, policy_name, env_id, escapes=2):
+    return _basic_path(algorithm_name, policy_name, env_id, escapes) + 'meta.json'
 
 
-def _model_path(algorithm_name, policy_name, escapes=2):
-    return _basic_path(algorithm_name, policy_name, escapes)
+def _model_path(algorithm_name, policy_name, env_id, escapes=2):
+    return _basic_path(algorithm_name, policy_name, env_id, escapes)
 
 
-def _training_folder_path(algorithm_name, policy_name, training, escapes=2):
-    return _basic_path(algorithm_name, policy_name, escapes) + 'training' + str(training) + '/'
+def _training_folder_path(algorithm_name, policy_name, env_id, training, escapes=2):
+    return _basic_path(algorithm_name, policy_name, env_id, escapes) + 'training' + str(training) + '/'
 
 
-def _log_path(algorithm_name, policy_name, training, escapes=2):
-    return _training_folder_path(algorithm_name, policy_name, training, escapes) + 'logs/'
+def _log_path(algorithm_name, policy_name, env_id, training, escapes=2):
+    return _training_folder_path(algorithm_name, policy_name, env_id, training, escapes) + 'logs/'
 
 
-def init_next_training(algorithm_name, policy_name, escapes=2):
-    meta_info_path = _meta_info_file(algorithm_name, policy_name, escapes)
+def init_next_training(algorithm_name, policy_name, env_id, escapes=2):
+    meta_info_path = _meta_info_file(algorithm_name, policy_name, env_id, escapes)
     info = {}
     try:
         with open(meta_info_path, 'r+') as file:
             info = json.load(file)
             file.close()
     except:
+        os.makedirs(meta_info_path, exist_ok=True)
+        os.rmdir(meta_info_path)
         pass
 
     # save model in training folder
     if info.get('training_started', 0) > 0:
-        path = _basic_path(algorithm_name, policy_name, escapes)
-        paste_location = _training_folder_path(algorithm_name, policy_name, info['training_started'], escapes=escapes)
+        path = _basic_path(algorithm_name, policy_name, env_id, escapes)
+        paste_location = _training_folder_path(algorithm_name, policy_name, env_id, info['training_started'], escapes=escapes)
         for name in os.listdir(path):
             if (not name.startswith('training')) and (not '.json' in name):
                 os.makedirs(paste_location, exist_ok=True)
@@ -49,13 +52,13 @@ def init_next_training(algorithm_name, policy_name, escapes=2):
         file.close()
 
     # return necessary paths for training
-    model_path = _model_path(algorithm_name, policy_name, escapes=escapes)
-    log_path = _log_path(algorithm_name, policy_name, info['training_started'], escapes=escapes)
+    model_path = _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
+    log_path = _log_path(algorithm_name, policy_name, env_id, info['training_started'], escapes=escapes)
     return model_path, log_path
 
 
-def get_log_paths(algorithm_name, policy_name, escapes=2):
-    meta_info_path = _meta_info_file(algorithm_name, policy_name, escapes)
+def get_log_paths(algorithm_name, policy_name, env_id, escapes=2):
+    meta_info_path = _meta_info_file(algorithm_name, policy_name, env_id, escapes)
     info = {}
     log_paths = []
     try:
@@ -66,6 +69,20 @@ def get_log_paths(algorithm_name, policy_name, escapes=2):
         pass
 
     for i in range(1, info.get('training_started', 0)+1):
-        log_paths.append(_log_path(algorithm_name, policy_name, i, escapes=escapes))
+        log_paths.append(_log_path(algorithm_name, policy_name, env_id, i, escapes=escapes))
 
     return log_paths
+
+
+def get_model_path(algorithm_name, policy_name, env_id, escapes=2, training=-1):
+    path = '.'
+    if training > 0:
+        # model of specific training
+        path = _training_folder_path(algorithm_name, policy_name, env_id, training, escapes=2)
+    else:
+        # most recent model for training <= 0
+        path =  _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
+    if not os.path.exists(path):
+        print('Model does not exist!')
+        return False
+    return path

@@ -206,3 +206,43 @@ def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
 
     model.save(save_path, save_name)
     env.close()
+
+
+def play(policy, env, seed, nep=5, save_path='', save_name='model'):
+    tf.reset_default_graph()
+    set_global_seeds(seed)
+
+    ob_space = env.observation_space
+    ac_space = env.action_space
+    nstack = 4
+    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1, nstack=nstack, num_procs=1, ent_coef=1, vf_coef=1,
+        max_grad_norm=1, lr=1, alpha=1, epsilon=1, total_timesteps=1, lrschedule='linear')
+    model.load(save_path, save_name)
+
+    nh, nw, nc = env.observation_space.shape
+    batch_ob_shape = (1, nh, nw, nc*nstack)
+    observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
+
+    def update_obs(stored_obs, new_obs):
+        # Do frame-stacking here instead of the FrameStack wrapper to reduce
+        # IPC overhead
+        stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
+        stored_obs[:, :, :, -nc:] = new_obs
+        return stored_obs
+
+    total_reward = 0
+    for e in range(nep):
+        done = False
+        new_obs = env.reset()
+        observations = update_obs(observations, new_obs)
+        states = model.initial_state
+        episode_reward = 0
+        while not done:
+            actions, values, states = model.step(observations, states, [done])
+            new_obs, reward, done, info = env.step(actions)
+            observations = update_obs(observations, new_obs)
+            episode_reward += reward
+            env.render()
+        print('Episode reward:', episode_reward)
+        total_reward += episode_reward
+    print('Done! Total reward:', total_reward)
