@@ -10,12 +10,13 @@ def col_name_to_str(col_name):
         'l': 'Episode length',
         't': 'Time since start',
         'policy_entropy': 'Policy entropy',
+        'policy_loss': 'Policy loss',
         'fps': 'Frames/s',
         'value_loss': 'Value Loss',
         'total_timesteps': 'Total timesteps',
         'nupdates': '#Updates',
         'explained_variance': 'Explained variance'
-    }.get(col_name, 'unknown')
+    }.get(col_name, col_name)
 
 
 def plot_monitors_individually(log_path, rolling_window=20):

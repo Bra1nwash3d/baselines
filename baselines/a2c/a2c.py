@@ -1,19 +1,13 @@
-import os.path as osp
-import gym
 import time
 import joblib
-import logging
 import numpy as np
 import tensorflow as tf
 from baselines import logger
 
 from baselines.common import set_global_seeds, explained_variance
-from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
-from baselines.common.atari_wrappers import wrap_deepmind
 
 from baselines.a2c.utils import discount_with_dones
 from baselines.a2c.utils import Scheduler, make_path, find_trainable_variables
-from baselines.a2c.policies import CnnPolicy
 from baselines.a2c.utils import cat_entropy, mse
 
 
@@ -215,17 +209,13 @@ def play(policy, env, seed, nep=5, save_path='', save_name='model'):
     ob_space = env.observation_space
     ac_space = env.action_space
     nstack = 4
-    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1, nstack=nstack, num_procs=1, ent_coef=1, vf_coef=1,
-        max_grad_norm=1, lr=1, alpha=1, epsilon=1, total_timesteps=1, lrschedule='linear')
+    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1, nstack=nstack, num_procs=1)
     model.load(save_path, save_name)
 
     nh, nw, nc = env.observation_space.shape
-    batch_ob_shape = (1, nh, nw, nc*nstack)
     observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
 
     def update_obs(stored_obs, new_obs):
-        # Do frame-stacking here instead of the FrameStack wrapper to reduce
-        # IPC overhead
         stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
         stored_obs[:, :, :, -nc:] = new_obs
         return stored_obs
