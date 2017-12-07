@@ -4,7 +4,7 @@ from baselines.common.plot_util import plot_monitors_merged, plot_progress_merge
 
 def main():
     policy = 'dnc'
-    algorithm = 'a2c'
+    algorithm = 'acktr'
     env_id = 'BreakoutNoFrameskip-v4'
     log_paths = get_log_paths(algorithm, policy, env_id)
     title = algorithm + ' training for ' + policy + ' policy'

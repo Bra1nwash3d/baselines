@@ -93,6 +93,15 @@ def kl_div(action_dist1, action_dist2, action_size):
     return tf.reduce_sum(
         numerator/denominator + tf.log(std2) - tf.log(std1),reduction_indices=-1)
 
+def seq_to_batch(h, flat = False):
+    shape = h[0].get_shape().as_list()
+    if not flat:
+        assert(len(shape) > 1)
+        nh = h[0].get_shape()[-1].value
+        return tf.reshape(tf.concat(axis=1, values=h), [-1, nh])
+    else:
+        return tf.reshape(tf.stack(values=h, axis=1), [-1])
+
 def discount_with_dones(rewards, dones, gamma):
     discounted = []
     r = 0

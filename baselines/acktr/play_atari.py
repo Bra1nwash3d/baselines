@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-from baselines.a2c.a2c import play
-from baselines.a2c.run_atari import str_to_policy
+from baselines.acktr.acktr_disc import play
+from baselines.acktr.run_atari import str_to_policy
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.path_util import get_model_path
 
@@ -18,11 +18,11 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='dnc')
+    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'dnc'], default='dnc')
     parser.add_argument('--num-episodes', type=int, default=5)
     parser.add_argument('--training', type=int, default=-1)
     args = parser.parse_args()
-    model_path = get_model_path('a2c', args.policy, args.env, training=args.training)
+    model_path = get_model_path('acktr', args.policy, args.env, training=args.training)
     if model_path:
         play_atari(args.env,
                    seed=args.seed,

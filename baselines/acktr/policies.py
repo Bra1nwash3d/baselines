@@ -1,7 +1,17 @@
 import numpy as np
 import tensorflow as tf
-from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div
+from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div, seq_to_batch
 import baselines.common.tf_util as U
+from baselines.common.MaskedDNC import MaskedDNC, MaskedDNCInput
+
+FLAGS = tf.flags.FLAGS
+
+# Model parameters
+tf.flags.DEFINE_integer("memory_size", 16, "The number of memory slots.")
+tf.flags.DEFINE_integer("word_size", 16, "The width of each memory slot.")
+tf.flags.DEFINE_integer("num_write_heads", 1, "Number of memory write heads.")
+tf.flags.DEFINE_integer("num_read_heads", 2, "Number of memory read heads.")
+tf.flags.DEFINE_integer("clip_value", 200000, "Maximum absolute value of controller and dnc outputs.")
 
 class CnnPolicy(object):
 
@@ -22,7 +32,7 @@ class CnnPolicy(object):
 
         v0 = vf[:, 0]
         a0 = sample(pi)
-        self.initial_state = [] #not stateful
+        self._initial_state = [] #not stateful
 
         def step(ob, *_args, **_kwargs):
             a, v = sess.run([a0, v0], {X:ob})
@@ -31,11 +41,82 @@ class CnnPolicy(object):
         def value(ob, *_args, **_kwargs):
             return sess.run(v0, {X:ob})
 
+        def initial_state():
+            return self._initial_state
+
         self.X = X
         self.pi = pi
         self.vf = vf
         self.step = step
         self.value = value
+        self.initial_state = initial_state
+
+
+class DncPolicy(object):
+    def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, nlstm=64, reuse=False):
+        nbatch = nenv*nsteps
+        nh, nw, nc = ob_space.shape
+        ob_shape = (nbatch, nh, nw, nc*nstack)
+        nact = ac_space.n
+        X = tf.placeholder(tf.uint8, ob_shape)  # obs
+        M = tf.placeholder(tf.float32, [nbatch])  # mask (done t-1)
+
+        access_config = {
+            "memory_size": FLAGS.memory_size,
+            "word_size": FLAGS.word_size,
+            "num_reads": FLAGS.num_read_heads,
+            "num_writes": FLAGS.num_write_heads,
+        }
+        controller_config = {
+            "hidden_size": nlstm,
+        }
+
+        with tf.variable_scope("model", reuse=reuse):
+            h = conv(tf.cast(X, tf.float32)/255., 'c1', nf=32, rf=8, stride=4, init_scale=np.sqrt(2))
+            h2 = conv(h, 'c2', nf=64, rf=4, stride=2, init_scale=np.sqrt(2))
+            h3 = conv(h2, 'c3', nf=32, rf=3, stride=1, init_scale=np.sqrt(2))
+            h3 = conv_to_fc(h3)
+            h4 = fc(h3, 'fc1', nh=512, init_scale=np.sqrt(2))
+            xs = tf.reshape(h4, [nenv, nsteps, -1])  # batch_to_seq(h4, nenv, nsteps)
+            ms = tf.reshape(M, [nenv, nsteps, 1])  # batch_to_seq(M, nenv, nsteps)
+            # use nlstm as output size again, so we can add the fc layers like before
+            dnc_model = MaskedDNC(access_config, controller_config, nlstm, FLAGS.clip_value)
+            ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
+            S = dnc_model.initial_state(nenv)  # states
+            dnc_input = MaskedDNCInput(
+                input=xs,
+                mask=ms
+            )
+            h5, snew = tf.nn.dynamic_rnn(
+                cell=dnc_model,
+                inputs=dnc_input,
+                time_major=False,
+                initial_state=S)
+            h5 = seq_to_batch(h5)
+            pi = fc(h5, 'pi', nact, act=lambda x:x)
+            vf = fc(h5, 'v', 1, act=lambda x:x)
+
+        v0 = vf[:, 0]
+        a0 = sample(pi)
+
+        def step(ob, state, mask):
+            a, v, s = sess.run([a0, v0, snew], {X:ob, S:state, M:mask})
+            return a, v, s
+
+        def value(ob, state, mask):
+            return sess.run(v0, {X:ob, S:state, M:mask})
+
+        def initial_state():
+            return sess.run(S)
+
+        self.X = X
+        self.M = M
+        self.S = S
+        self.pi = pi
+        self.vf = vf
+        self.step = step
+        self.value = value
+        self.initial_state = initial_state
 
 
 class GaussianMlpPolicy(object):
