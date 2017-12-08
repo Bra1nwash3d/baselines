@@ -6,6 +6,8 @@ import time
 
 VALUE_MARKER_SIZE = 10
 WINDOW_WIDTH = 400
+MAX_RECENT_STEPS = 100
+STEP_MIN_PAUSE = 0.05
 
 
 def val_to_col(v):
@@ -34,62 +36,55 @@ class StateFrame(tk.Frame):
         self._num_write_heads = num_write_heads
         self._actions_frame = tk.LabelFrame(self, text='Actions')
         self._actions_frame.pack(side='top', anchor='w', fill='y')
+        self._action_recent = []
         self._read_weights_frames = []
+        self._read_weights_recent = []
         for i in range(num_read_heads):
             rwf = tk.LabelFrame(self, text='Read weights '+str(i))
             rwf.pack(side='top', anchor='w', fill='y')
             self._read_weights_frames.append(rwf)
+            self._read_weights_recent.append([])
         self._write_weights_frames = []
+        self._write_weights_recent = []
         for i in range(num_write_heads):
             wwf = tk.LabelFrame(self, text='Write weights '+str(i))
             wwf.pack(side='top', anchor='w', fill='y')
             self._write_weights_frames.append(wwf)
-        self.add_zero_init()
+            self._write_weights_recent.append([])
+        self._add_zero_init()
 
-    def add_zero_init(self):
-        vec_to_panels(self._actions_frame, np.zeros(self._num_actions))
-        for f in self._read_weights_frames:
-            vec_to_panels(f, np.zeros(self._num_words))
-        for f in self._write_weights_frames:
-            vec_to_panels(f, np.zeros(self._num_words))
+    def _add_zero_init(self):
+        self._append(self._action_recent, self._actions_frame, np.zeros(self._num_actions))
+        for i in range(len(self._read_weights_frames)):
+            self._append(self._read_weights_recent[i], self._read_weights_frames[i], np.zeros(self._num_words))
+        for i in range(len(self._write_weights_frames)):
+            self._append(self._write_weights_recent[i], self._write_weights_frames[i], np.zeros(self._num_words))
+
+    def _append(self, lst, frame, vec):
+        lst.append(vec_to_panels(frame, vec))
+        while len(lst) > MAX_RECENT_STEPS:
+            lst.pop(0).destroy()
 
     def add_action_vector(self, action_index):
         a = np.zeros(self._num_actions)
         a[action_index] = 1
-        vec_to_panels(self._actions_frame, a)
+        self._append(self._action_recent, self._actions_frame, a)
         return self._parent.winfo_width()
 
     def add_weights(self, read_weights, write_weights):
         """ expecting (num_X_heads, num_words) shaped vectors for both """
-        for i in range(len(read_weights)):
-            vec_to_panels(self._read_weights_frames[i], read_weights[i])
-        for i in range(len(write_weights)):
-            vec_to_panels(self._write_weights_frames[i], write_weights[i])
-
-
-class StepThread(threading.Thread):
-    def __init__(self, player, sleep_duration):
-        threading.Thread.__init__(self)
-        self._player = player
-        self._sleep_duration = sleep_duration
-        self._stop = False
-
-    def set_sleep_duration(self, sleep_duration):
-        self._sleep_duration = sleep_duration
-
-    def stop(self):
-        self._stop = True
-
-    def run(self):
-        while not self._stop:
-            self._stop = self._player.step(render=False)
-            time.sleep(self._sleep_duration)
+        for i in range(len(self._read_weights_frames)):
+            self._append(self._read_weights_recent[i], self._read_weights_frames[i], read_weights[i])
+        for i in range(len(self._write_weights_frames)):
+            self._append(self._write_weights_recent[i], self._write_weights_frames[i], write_weights[i])
 
 
 class DNCVisualizedPlayer(tk.Frame):
     @staticmethod
     def player(env, model, nstack=4):
-        app = DNCVisualizedPlayer(env, model, nstack=nstack, parent=tk.Tk())
+        root = tk.Tk()
+        root.wm_title("DNC Player")
+        app = DNCVisualizedPlayer(env, model, nstack=nstack, parent=root)
         app.mainloop()
         return app
 
@@ -99,12 +94,15 @@ class DNCVisualizedPlayer(tk.Frame):
         self._LOCK = threading.Lock()
         self._env = env
         self._model = model
-        self._auto_stepper_pause = 0.25
-        self._auto_stepper = None
+        self._step_min_pause = STEP_MIN_PAUSE
+        self._last_step = time.time()
+        self._can_step = True
 
         nh, nw, self._nc = env.observation_space.shape
         self._observation = np.zeros((1, nh, nw, self._nc*nstack), dtype=np.uint8)
-        self._observation = self._update_obs(self._env.reset())
+        self._update_obs(self._env.reset())
+        self._episode_reward = 0
+        self._episode_steps = 0
 
         self._model_state = model.initial_state
         self._batch_size = len(self._model_state.access_state.read_weights)
@@ -115,9 +113,13 @@ class DNCVisualizedPlayer(tk.Frame):
         self._num_actions = self._env.action_space.n
         self._env.render()
         self._step_button,\
-            self._reset_button,\
-            self._auto_step_button,\
-            self._stop_auto_step_button = self.add_interaction_frame(self)
+            self._reset_button = self._add_interaction_frame(self)
+        self._episode_reward_label,\
+            self._episode_steps_label = self._add_info_frame(self)
+
+        parent.bind('s', self.step)
+        parent.bind('S', self.step)
+        parent.bind('MouseWheel', self.step)
 
         height = (self._num_write_heads + self._num_read_heads) * (self._num_words+3) + self._num_actions + 3
         height *= VALUE_MARKER_SIZE
@@ -135,28 +137,39 @@ class DNCVisualizedPlayer(tk.Frame):
     def _update_obs(self, new_obs):
         self._observation = np.roll(self._observation, shift=-self._nc, axis=3)
         self._observation[:, :, :, -self._nc:] = new_obs
-        return self._observation
 
     def _update_scrolling(self, width):
         self._canvas.configure(scrollregion=(0, 0, width+10, 0))
         self._canvas.xview_moveto(width+10)
 
-    def add_interaction_frame(self, parent):
+    def _update_info_ui(self):
+        self._episode_reward_label.config(text="Episode reward:\t" + str(self._episode_reward))
+        self._episode_steps_label.config(text="Episode steps:\t" + str(self._episode_steps))
+
+    def _add_interaction_frame(self, parent):
         interactions_frame = tk.Frame(parent, borderwidth=5)
         interactions_frame.pack(anchor='w')
         reset_button = tk.Button(interactions_frame, text="Reset", command=self.reset)
         reset_button.pack(side='left', anchor='w')
         reset_button.config(state=tk.DISABLED)
-        step_button = tk.Button(interactions_frame, text="Step", command=self.step)
+        step_button = tk.Button(interactions_frame, text="Step (S)", command=self.step)
         step_button.pack(side='left', anchor='w')
-        auto_step_button = tk.Button(interactions_frame, text="Autostep", command=self.auto_step)
-        auto_step_button.pack(side='left', anchor='w')
-        stop_auto_step_button = tk.Button(interactions_frame, text="Stop autostep", command=self.stop_auto_step)
-        stop_auto_step_button.pack(side='left', anchor='w')
-        return step_button, reset_button, auto_step_button, stop_auto_step_button
+        return step_button, reset_button
+
+    def _add_info_frame(self, parent):
+        info_frame = tk.Frame(parent, borderwidth=5)
+        info_frame.pack(anchor='w')
+        episode_reward_label = tk.Label(info_frame, text="Episode reward:")
+        episode_reward_label.pack(side='top', anchor='w')
+        episode_steps_label = tk.Label(info_frame, text="Episode steps:")
+        episode_steps_label.pack(side='top', anchor='w')
+        return episode_reward_label, episode_steps_label
 
     def reset(self):
         self._LOCK.acquire()
+        self._episode_reward = 0
+        self._episode_steps = 0
+        self._update_obs(self._env.reset())
         for f in self._state_frames:
             f.destroy()
         self._state_frames = []
@@ -166,11 +179,11 @@ class DNCVisualizedPlayer(tk.Frame):
                                                  self._num_read_heads,
                                                  self._num_write_heads,
                                                  self._state_frames_container))
+        self._can_step = True
         self._reset_button.configure(state=tk.DISABLED)
         self._step_button.configure(state=tk.NORMAL)
-        self._auto_step_button.configure(state=tk.NORMAL)
-        self._stop_auto_step_button.configure(state=tk.DISABLED)
-        self._observation = self._update_obs(self._env.reset())
+        self._update_scrolling(0)
+        self._update_info_ui()
         self._env.render()
         self._LOCK.release()
 
@@ -188,42 +201,27 @@ class DNCVisualizedPlayer(tk.Frame):
             self._state_frames[i].add_weights(rw, ww)
         pass
 
-    def auto_step(self):
-        self._LOCK.acquire()
-        if not self._auto_stepper:
-            self._auto_stepper = StepThread(self, self._auto_stepper_pause)
-            self._auto_stepper.start()
-        self._stop_auto_step_button.configure(state=tk.NORMAL)
-        self._auto_step_button.configure(state=tk.DISABLED)
-        self._step_button.configure(state=tk.DISABLED)
-        self._LOCK.release()
-
-    def stop_auto_step(self):
-        self._LOCK.acquire()
-        if self._auto_stepper:
-            self._auto_stepper.stop()
-            self._auto_stepper = None
-        self._stop_auto_step_button.configure(state=tk.DISABLED)
-        self._auto_step_button.configure(state=tk.NORMAL)
-        self._step_button.configure(state=tk.NORMAL)
-        self._LOCK.release()
-
     def step(self, render=True):
+        if not self._can_step:
+            return
         self._LOCK.acquire()
-
+        if (time.time() - self._last_step) < self._step_min_pause:
+            self._LOCK.release()
+            return False
+        self._last_step = time.time()
         new_action, values, self._model_state = self._model.step(self._observation, self._model_state, [False])
         new_obs, reward, done, info = self._env.step(new_action)
         self._add_actions(new_action)
         self._add_state(self._model_state)
-        self._observation = self._update_obs(new_obs)
-
-        observation, reward, done, info = self._env.step(new_action)
+        self._update_obs(new_obs)
+        self._episode_reward += reward
+        self._episode_steps += 1
+        self._update_info_ui()
         if render:
             self._env.render()
         if done:
+            self._can_step = False
             self._reset_button.config(state=tk.NORMAL)
             self._step_button.config(state=tk.DISABLED)
-            self._auto_step_button.config(state=tk.DISABLED)
-            self._auto_stepper = None
         self._LOCK.release()
         return done
