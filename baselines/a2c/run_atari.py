@@ -23,7 +23,7 @@ def str_to_policy(policy):
     }.get(policy, DncPolicy)
 
 
-def train(env_id, num_timesteps, seed, policy, lrschedule, num_cpu, save_path, nsteps=1):
+def train(policy_args, env_id, num_timesteps, seed, policy, lrschedule, num_cpu, save_path, nsteps=1):
     def make_env(rank):
         def _thunk():
             env = make_atari(env_id)
@@ -36,6 +36,7 @@ def train(env_id, num_timesteps, seed, policy, lrschedule, num_cpu, save_path, n
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
 
     learn(str_to_policy(policy),
+          policy_args,
           env,
           seed,
           nsteps=nsteps,
@@ -52,17 +53,26 @@ def main():
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
     parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='dnc')
     parser.add_argument('--lrschedule', help='Learning rate schedule', choices=['constant', 'linear'], default='constant')
-    parser.add_argument('--num-timesteps', type=int, default=int(2*10e5))
+    parser.add_argument('--num-timesteps', type=int, default=int(1*10e2))
     args = parser.parse_args()
     t0 = time.time()
-    model_path, log_path = init_next_training('a2c', args.policy, args.env)
+    policy_args = {
+        'memory_size': 16,
+        'word_size': 16,
+        'num_read_heads': 2,
+        'num_write_heads': 1,
+        'clip_value': 200000,
+        'nlstm': 64,
+    }
+    model_path, log_path, policy_args = init_next_training('a2c', args.policy, args.env, policy_args)
     logger.configure(dir=log_path)
-    train(args.env,
+    train(policy_args,
+          args.env,
           num_timesteps=args.num_timesteps,
           seed=args.seed,
           policy=args.policy,
           lrschedule=args.lrschedule,
-          num_cpu=8,
+          num_cpu=16,
           nsteps=10,
           save_path=model_path)
     logger.info("Training time: \t\t%.2f" % (time.time()-t0))

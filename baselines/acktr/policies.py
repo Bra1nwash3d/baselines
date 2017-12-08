@@ -4,18 +4,10 @@ from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div, s
 import baselines.common.tf_util as U
 from baselines.common.MaskedDNC import MaskedDNC, MaskedDNCInput
 
-FLAGS = tf.flags.FLAGS
-
-# Model parameters
-tf.flags.DEFINE_integer("memory_size", 16, "The number of memory slots.")
-tf.flags.DEFINE_integer("word_size", 16, "The width of each memory slot.")
-tf.flags.DEFINE_integer("num_write_heads", 1, "Number of memory write heads.")
-tf.flags.DEFINE_integer("num_read_heads", 2, "Number of memory read heads.")
-tf.flags.DEFINE_integer("clip_value", 200000, "Maximum absolute value of controller and dnc outputs.")
 
 class CnnPolicy(object):
 
-    def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, reuse=False):
+    def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, args, reuse=False):
         nbatch = nenv*nsteps
         nh, nw, nc = ob_space.shape
         ob_shape = (nbatch, nh, nw, nc*nstack)
@@ -53,7 +45,8 @@ class CnnPolicy(object):
 
 
 class DncPolicy(object):
-    def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, nlstm=64, reuse=False):
+    def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, args, reuse=False):
+        nlstm = args.get('nlstm', 64)
         nbatch = nenv*nsteps
         nh, nw, nc = ob_space.shape
         ob_shape = (nbatch, nh, nw, nc*nstack)
@@ -62,10 +55,10 @@ class DncPolicy(object):
         M = tf.placeholder(tf.float32, [nbatch])  # mask (done t-1)
 
         access_config = {
-            "memory_size": FLAGS.memory_size,
-            "word_size": FLAGS.word_size,
-            "num_reads": FLAGS.num_read_heads,
-            "num_writes": FLAGS.num_write_heads,
+            "memory_size": args.get('memory_size', 16),
+            "word_size": args.get('word_size', 16),
+            "num_reads": args.get('num_read_heads', 1),
+            "num_writes": args.get('num_write_heads', 1),
         }
         controller_config = {
             "hidden_size": nlstm,
@@ -80,7 +73,7 @@ class DncPolicy(object):
             xs = tf.reshape(h4, [nenv, nsteps, -1])  # batch_to_seq(h4, nenv, nsteps)
             ms = tf.reshape(M, [nenv, nsteps, 1])  # batch_to_seq(M, nenv, nsteps)
             # use nlstm as output size again, so we can add the fc layers like before
-            dnc_model = MaskedDNC(access_config, controller_config, nlstm, FLAGS.clip_value)
+            dnc_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000))
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
             S = dnc_model.initial_state(nenv)  # states
             dnc_input = MaskedDNCInput(

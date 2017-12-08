@@ -15,7 +15,7 @@ from baselines.acktr import kfac
 
 class Model(object):
 
-    def __init__(self, policy, ob_space, ac_space, nenvs,total_timesteps, nprocs=32, nsteps=20,
+    def __init__(self, policy, policy_args, ob_space, ac_space, nenvs,total_timesteps, nprocs=32, nsteps=20,
                  nstack=4, ent_coef=0.01, vf_coef=0.5, vf_fisher_coef=1.0, lr=0.25, max_grad_norm=0.5,
                  kfac_clip=0.001, lrschedule='linear', rms_lr=7e-4,
                  rms_alpha=0.99, rms_epsilon=1e-5,):
@@ -33,8 +33,8 @@ class Model(object):
         VF_LR = tf.placeholder(tf.float32, [])
         RMS_LR = tf.placeholder(tf.float32, [])
 
-        self.model = step_model = policy(sess, ob_space, ac_space, nenvs, 1, nstack, reuse=False)
-        self.model2 = train_model = policy(sess, ob_space, ac_space, nenvs, nsteps, nstack, reuse=True)
+        self.model = step_model = policy(sess, ob_space, ac_space, nenvs, 1, nstack, policy_args, reuse=False)
+        self.model2 = train_model = policy(sess, ob_space, ac_space, nenvs, nsteps, nstack, policy_args, reuse=True)
 
         logpac = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_model.pi, labels=A)
         self.logits = logits = train_model.pi
@@ -191,7 +191,7 @@ class Runner(object):
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
 
-def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval=1, nprocs=32, nsteps=20,
+def learn(policy, policy_args, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval=1, nprocs=32, nsteps=20,
           nstack=4, ent_coef=0.01, vf_coef=0.5, vf_fisher_coef=1.0, lr=0.25, max_grad_norm=0.5,
           kfac_clip=0.001, lrschedule='linear', save_path='', save_name='model'):
     tf.reset_default_graph()
@@ -200,7 +200,7 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
     nenvs = env.num_envs
     ob_space = env.observation_space
     ac_space = env.action_space
-    make_model = lambda : Model(policy, ob_space, ac_space, nenvs, total_timesteps, nprocs=nprocs, nsteps
+    make_model = lambda : Model(policy, policy_args, ob_space, ac_space, nenvs, total_timesteps, nprocs=nprocs, nsteps
                                 =nsteps, nstack=nstack, ent_coef=ent_coef, vf_coef=vf_coef, vf_fisher_coef=
                                 vf_fisher_coef, lr=lr, max_grad_norm=max_grad_norm, kfac_clip=kfac_clip,
                                 lrschedule=lrschedule)
@@ -240,7 +240,7 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
     env.close()
 
 
-def play(policy, env, seed, nsteps=20, nep=5,
+def play(policy, policy_args, env, seed, nsteps=20, nep=5,
           nstack=4, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
@@ -249,7 +249,7 @@ def play(policy, env, seed, nsteps=20, nep=5,
     nenvs = 1
     ob_space = env.observation_space
     ac_space = env.action_space
-    model = Model(policy, ob_space, ac_space, nenvs, 1, nprocs=nprocs, nsteps=1, nstack=nstack)
+    model = Model(policy, policy_args ,ob_space, ac_space, nenvs, 1, nprocs=nprocs, nsteps=1, nstack=nstack)
     model.load(save_path, save_name)
 
     nh, nw, nc = env.observation_space.shape

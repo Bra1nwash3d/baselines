@@ -17,7 +17,7 @@ def str_to_policy(policy):
     }.get(policy, DncPolicy)
 
 
-def train(env_id, num_timesteps, seed, policy, num_cpu, save_path):
+def train(policy_args, env_id, num_timesteps, seed, policy, num_cpu, save_path):
     def make_env(rank):
         def _thunk():
             env = make_atari(env_id)
@@ -29,6 +29,7 @@ def train(env_id, num_timesteps, seed, policy, num_cpu, save_path):
     set_global_seeds(seed)
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
     learn(str_to_policy(policy),
+          policy_args,
           env,
           seed,
           total_timesteps=int(num_timesteps * 1.1),
@@ -43,12 +44,21 @@ def main():
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
     parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'dnc'], default='dnc')
-    parser.add_argument('--num-timesteps', type=int, default=int(5*10e4))
+    parser.add_argument('--num-timesteps', type=int, default=int(1*10e5))
     args = parser.parse_args()
     t0 = time.time()
-    model_path, log_path = init_next_training('acktr', args.policy, args.env)
+    policy_args = {
+        'memory_size': 16,
+        'word_size': 16,
+        'num_read_heads': 2,
+        'num_write_heads': 1,
+        'clip_value': 200000,
+        'nlstm': 64,
+    }
+    model_path, log_path, policy_args = init_next_training('acktr', args.policy, args.env, policy_args)
     logger.configure(dir=log_path)
-    train(args.env,
+    train(policy_args,
+          args.env,
           num_timesteps=args.num_timesteps,
           seed=args.seed,
           policy=args.policy,

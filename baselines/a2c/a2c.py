@@ -9,11 +9,12 @@ from baselines.common import set_global_seeds, explained_variance
 from baselines.a2c.utils import discount_with_dones
 from baselines.a2c.utils import Scheduler, make_path, find_trainable_variables
 from baselines.a2c.utils import cat_entropy, mse
+from baselines.common.DNCVisualizedPlayer import DNCVisualizedPlayer
 
 
 class Model(object):
 
-    def __init__(self, policy, ob_space, ac_space, nenvs, nsteps, nstack, num_procs,
+    def __init__(self, policy, policy_args, ob_space, ac_space, nenvs, nsteps, nstack, num_procs,
             ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, lr=7e-4,
             alpha=0.99, epsilon=1e-5, total_timesteps=int(80e6), lrschedule='linear'):
         config = tf.ConfigProto(allow_soft_placement=True,
@@ -29,8 +30,8 @@ class Model(object):
         R = tf.placeholder(tf.float32, [nbatch])
         LR = tf.placeholder(tf.float32, [])
 
-        step_model = policy(sess, ob_space, ac_space, nenvs, 1, nstack, reuse=False)
-        train_model = policy(sess, ob_space, ac_space, nenvs, nsteps, nstack, reuse=True)
+        step_model = policy(sess, ob_space, ac_space, nenvs, 1, nstack, policy_args, reuse=False)
+        train_model = policy(sess, ob_space, ac_space, nenvs, nsteps, nstack, policy_args, reuse=True)
 
         neglogpac = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_model.pi, labels=A)
         pg_loss = tf.reduce_mean(ADV * neglogpac)
@@ -160,7 +161,7 @@ class Runner(object):
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
 
-def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
+def learn(policy, policy_args, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
           vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear',
           epsilon=1e-5, alpha=0.99, gamma=0.99, log_interval=100,
           save_path='', save_name='model'):
@@ -171,8 +172,10 @@ def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
     ob_space = env.observation_space
     ac_space = env.action_space
     num_procs = len(env.remotes)  # HACK
-    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=nenvs, nsteps=nsteps, nstack=nstack, num_procs=num_procs, ent_coef=ent_coef, vf_coef=vf_coef,
-        max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps, lrschedule=lrschedule)
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=nenvs,
+                  nsteps=nsteps, nstack=nstack, num_procs=num_procs, ent_coef=ent_coef, vf_coef=vf_coef,
+                  max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps,
+                  lrschedule=lrschedule)
     model.load(save_path, save_name)
     runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma)
 
@@ -202,37 +205,41 @@ def learn(policy, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
     env.close()
 
 
-def play(policy, env, seed, nep=5, save_path='', save_name='model'):
+def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
     ob_space = env.observation_space
     ac_space = env.action_space
     nstack = 4
-    model = Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1, nstack=nstack, num_procs=1)
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=1,
+                  nsteps=1, nstack=nstack, num_procs=1)
     model.load(save_path, save_name)
 
-    nh, nw, nc = env.observation_space.shape
-    observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
+    if nep <= 0:
+        DNCVisualizedPlayer.player(env, model, nstack=nstack)
+    else:
+        nh, nw, nc = env.observation_space.shape
+        observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
 
-    def update_obs(stored_obs, new_obs):
-        stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
-        stored_obs[:, :, :, -nc:] = new_obs
-        return stored_obs
+        def update_obs(stored_obs, new_obs):
+            stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
+            stored_obs[:, :, :, -nc:] = new_obs
+            return stored_obs
 
-    total_reward = 0
-    for e in range(nep):
-        done = False
-        new_obs = env.reset()
-        observations = update_obs(observations, new_obs)
-        states = model.initial_state
-        episode_reward = 0
-        while not done:
-            actions, values, states = model.step(observations, states, [done])
-            new_obs, reward, done, info = env.step(actions)
+        total_reward = 0
+        for e in range(nep):
+            done = False
+            new_obs = env.reset()
             observations = update_obs(observations, new_obs)
-            episode_reward += reward
-            env.render()
-        print('Episode reward:', episode_reward)
-        total_reward += episode_reward
-    print('Done! Total reward:', total_reward)
+            states = model.initial_state
+            episode_reward = 0
+            while not done:
+                actions, values, states = model.step(observations, states, [done])
+                new_obs, reward, done, info = env.step(actions)
+                observations = update_obs(observations, new_obs)
+                episode_reward += reward
+                env.render()
+            print('Episode reward:', episode_reward)
+            total_reward += episode_reward
+        print('Done! Total reward:', total_reward)
