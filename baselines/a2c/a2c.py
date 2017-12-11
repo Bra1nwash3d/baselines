@@ -100,11 +100,17 @@ class Runner(object):
     def __init__(self, env, model, nsteps=5, nstack=4, gamma=0.99):
         self.env = env
         self.model = model
-        nh, nw, nc = env.observation_space.shape
         nenv = env.num_envs
-        self.batch_ob_shape = (nenv*nsteps, nh, nw, nc*nstack)
-        self.obs = np.zeros((nenv, nh, nw, nc*nstack), dtype=np.uint8)
-        self.nc = nc
+        if len(env.observation_space.shape) == 3:
+            nh, nw, self.nc = env.observation_space.shape
+            self.batch_ob_shape = (nenv*nsteps, nh, nw, self.nc*nstack)
+            self.obs = np.zeros((nenv, nh, nw, self.nc*nstack), dtype=np.uint8)
+            self.update_obs = self.update_obs_3d
+        else:
+            self.nc = env.observation_space.shape[-1]
+            self.batch_ob_shape = (nenv*nsteps, self.nc*nstack)
+            self.obs = np.zeros((nenv, self.nc*nstack), dtype=np.uint8)
+            self.update_obs = self.update_obs_1d
         obs = env.reset()
         self.update_obs(obs)
         self.gamma = gamma
@@ -112,11 +118,13 @@ class Runner(object):
         self.states = model.initial_state
         self.dones = [False for _ in range(nenv)]
 
-    def update_obs(self, obs):
-        # Do frame-stacking here instead of the FrameStack wrapper to reduce
-        # IPC overhead
+    def update_obs_3d(self, obs):
         self.obs = np.roll(self.obs, shift=-self.nc, axis=3)
         self.obs[:, :, :, -self.nc:] = obs
+
+    def update_obs_1d(self, obs):
+        self.obs = np.roll(self.obs, shift=-self.nc, axis=1)
+        self.obs[:, -self.nc:] = obs
 
     def run(self):
         mb_obs, mb_rewards, mb_actions, mb_values, mb_dones = [],[],[],[],[]
@@ -219,13 +227,22 @@ def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model')
     if nep <= 0:
         DNCVisualizedPlayer.player(env, model, nstack=nstack)
     else:
-        nh, nw, nc = env.observation_space.shape
-        observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
+        if len(env.observation_space.shape) == 3:
+            nh, nw, nc = env.observation_space.shape
+            observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
 
-        def update_obs(stored_obs, new_obs):
-            stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
-            stored_obs[:, :, :, -nc:] = new_obs
-            return stored_obs
+            def update_obs(stored_obs, new_obs):
+                stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
+                stored_obs[:, :, :, -nc:] = new_obs
+                return stored_obs
+        else:
+            nc = env.observation_space.shape[-1]
+            observations = np.zeros((1, nc*nstack), dtype=np.uint8)
+
+            def update_obs(stored_obs, new_obs):
+                stored_obs = np.roll(stored_obs, shift=-nc, axis=1)
+                stored_obs[:, -nc:] = new_obs
+                return stored_obs
 
         total_reward = 0
         for e in range(nep):
@@ -236,7 +253,8 @@ def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model')
             episode_reward = 0
             while not done:
                 actions, values, states = model.step(observations, states, [done])
-                new_obs, reward, done, info = env.step(actions)
+                print(actions)
+                new_obs, reward, done, info = env.step(actions[0])
                 observations = update_obs(observations, new_obs)
                 episode_reward += reward
                 env.render()

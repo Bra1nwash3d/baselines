@@ -141,8 +141,14 @@ class DncPolicy(object):
     def __init__(self, sess, ob_space, ac_space, nenv, nsteps, nstack, args, reuse=False):
         nlstm = args.get('nlstm', 64)
         nbatch = nenv*nsteps
-        nh, nw, nc = ob_space.shape
-        ob_shape = (nbatch, nh, nw, nc*nstack)
+        if len(ob_space.shape) == 3:
+            nh, nw, nc = ob_space.shape
+            ob_shape = (nbatch, nh, nw, nc*nstack)
+            uses_conv = True
+        else:
+            nc = ob_space.shape[-1]
+            ob_shape = (nbatch, nc*nstack)
+            uses_conv = False
         nact = ac_space.n
         X = tf.placeholder(tf.uint8, ob_shape)  # obs
         M = tf.placeholder(tf.float32, [nbatch])  # mask (done t-1)
@@ -158,10 +164,13 @@ class DncPolicy(object):
         }
 
         with tf.variable_scope("model", reuse=reuse):
-            h = conv(tf.cast(X, tf.float32)/255., 'c1', nf=32, rf=8, stride=4, init_scale=np.sqrt(2))
-            h2 = conv(h, 'c2', nf=64, rf=4, stride=2, init_scale=np.sqrt(2))
-            h3 = conv(h2, 'c3', nf=64, rf=3, stride=1, init_scale=np.sqrt(2))
-            h3 = conv_to_fc(h3)
+            if uses_conv:
+                h = conv(tf.cast(X, tf.float32)/255., 'c1', nf=32, rf=8, stride=4, init_scale=np.sqrt(2))
+                h2 = conv(h, 'c2', nf=64, rf=4, stride=2, init_scale=np.sqrt(2))
+                h3 = conv(h2, 'c3', nf=64, rf=3, stride=1, init_scale=np.sqrt(2))
+                h3 = conv_to_fc(h3)
+            else:
+                h3 = conv_to_fc(tf.cast(X, tf.float32))
             h4 = fc(h3, 'fc1', nh=512, init_scale=np.sqrt(2))
             xs = tf.reshape(h4, [nenv, nsteps, -1])  # batch_to_seq(h4, nenv, nsteps)
             ms = tf.reshape(M, [nenv, nsteps, 1])  # batch_to_seq(M, nenv, nsteps)

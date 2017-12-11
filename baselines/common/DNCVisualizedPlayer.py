@@ -97,9 +97,16 @@ class DNCVisualizedPlayer(tk.Frame):
         self._step_min_pause = STEP_MIN_PAUSE
         self._last_step = time.time()
         self._can_step = True
+        self._can_reset = True
 
-        nh, nw, self._nc = env.observation_space.shape
-        self._observation = np.zeros((1, nh, nw, self._nc*nstack), dtype=np.uint8)
+        if len(env.observation_space.shape) == 3:
+            nh, nw, self._nc = env.observation_space.shape
+            self._observation = np.zeros((1, nh, nw, self._nc*nstack), dtype=np.uint8)
+            self._update_obs = self._update_obs_3d
+        else:
+            self._nc = env.observation_space.shape[-1]
+            self._observation = np.zeros((1, self._nc*nstack), dtype=np.uint8)
+            self._update_obs = self._update_obs_1d
         self._update_obs(self._env.reset())
         self._episode_reward = 0
         self._episode_steps = 0
@@ -118,8 +125,7 @@ class DNCVisualizedPlayer(tk.Frame):
             self._episode_steps_label = self._add_info_frame(self)
 
         parent.bind('s', self.step)
-        parent.bind('S', self.step)
-        parent.bind('MouseWheel', self.step)
+        parent.bind('r', self.reset)
 
         height = (self._num_write_heads + self._num_read_heads) * (self._num_words+3) + self._num_actions + 3
         height *= VALUE_MARKER_SIZE
@@ -134,9 +140,13 @@ class DNCVisualizedPlayer(tk.Frame):
         parent.wm_resizable(width=False, height=False)
         self.reset()
 
-    def _update_obs(self, new_obs):
+    def _update_obs_3d(self, new_obs):
         self._observation = np.roll(self._observation, shift=-self._nc, axis=3)
         self._observation[:, :, :, -self._nc:] = new_obs
+
+    def _update_obs_1d(self, new_obs):
+        self._observation = np.roll(self._observation, shift=-self._nc, axis=1)
+        self._observation[:, -self._nc:] = new_obs
 
     def _update_scrolling(self, width):
         self._canvas.configure(scrollregion=(0, 0, width+10, 0))
@@ -149,7 +159,7 @@ class DNCVisualizedPlayer(tk.Frame):
     def _add_interaction_frame(self, parent):
         interactions_frame = tk.Frame(parent, borderwidth=5)
         interactions_frame.pack(anchor='w')
-        reset_button = tk.Button(interactions_frame, text="Reset", command=self.reset)
+        reset_button = tk.Button(interactions_frame, text="Reset (R)", command=self.reset)
         reset_button.pack(side='left', anchor='w')
         reset_button.config(state=tk.DISABLED)
         step_button = tk.Button(interactions_frame, text="Step (S)", command=self.step)
@@ -165,8 +175,11 @@ class DNCVisualizedPlayer(tk.Frame):
         episode_steps_label.pack(side='top', anchor='w')
         return episode_reward_label, episode_steps_label
 
-    def reset(self):
+    def reset(self, unused_arg=None):
         self._LOCK.acquire()
+        if not self._can_reset:
+            self._LOCK.release()
+            return
         self._episode_reward = 0
         self._episode_steps = 0
         self._update_obs(self._env.reset())
@@ -180,6 +193,7 @@ class DNCVisualizedPlayer(tk.Frame):
                                                  self._num_write_heads,
                                                  self._state_frames_container))
         self._can_step = True
+        self._can_reset = False
         self._reset_button.configure(state=tk.DISABLED)
         self._step_button.configure(state=tk.NORMAL)
         self._update_scrolling(0)
@@ -210,7 +224,7 @@ class DNCVisualizedPlayer(tk.Frame):
             return False
         self._last_step = time.time()
         new_action, values, self._model_state = self._model.step(self._observation, self._model_state, [False])
-        new_obs, reward, done, info = self._env.step(new_action)
+        new_obs, reward, done, info = self._env.step(new_action[0])
         self._add_actions(new_action)
         self._add_state(self._model_state)
         self._update_obs(new_obs)
@@ -221,6 +235,7 @@ class DNCVisualizedPlayer(tk.Frame):
             self._env.render()
         if done:
             self._can_step = False
+            self._can_reset = True
             self._reset_button.config(state=tk.NORMAL)
             self._step_button.config(state=tk.DISABLED)
         self._LOCK.release()
