@@ -1,20 +1,21 @@
-import os
 import time
 import joblib
 import numpy as np
-import os.path as osp
 import tensorflow as tf
 from baselines import logger
 from collections import deque
-from baselines.common import explained_variance
+from baselines.common import explained_variance, MaskedDNC, set_global_seeds
+from baselines.common.DNCVisualizedPlayer import DNCVisualizedPlayer
+from baselines.a2c.utils import make_path
+
 
 class Model(object):
-    def __init__(self, *, policy, ob_space, ac_space, nbatch_act, nbatch_train,
+    def __init__(self, *, policy, policy_args, ob_space, ac_space, nbatch_act, nbatch_train,
                 nsteps, ent_coef, vf_coef, max_grad_norm):
         sess = tf.get_default_session()
 
-        act_model = policy(sess, ob_space, ac_space, nbatch_act, 1, reuse=False)
-        train_model = policy(sess, ob_space, ac_space, nbatch_train, nsteps, reuse=True)
+        act_model = policy(sess, ob_space, ac_space, nbatch_act, 1, args=policy_args, reuse=False)
+        train_model = policy(sess, ob_space, ac_space, nbatch_train, nsteps, args=policy_args, reuse=True)
 
         A = train_model.pdtype.sample_placeholder([None])
         ADV = tf.placeholder(tf.float32, [None])
@@ -56,32 +57,40 @@ class Model(object):
             if states is not None:
                 td_map[train_model.S] = states
                 td_map[train_model.M] = masks
-            return sess.run(
-                [pg_loss, vf_loss, entropy, approxkl, clipfrac, _train],
-                td_map
-            )[:-1]
-        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac']
+            return sess.run([pg_loss, vf_loss, entropy, approxkl, clipfrac, _train], td_map)[:-1]
 
-        def save(save_path):
+        def save(save_path, file_name, log=False):
+            if log:
+                logger.info("Saving to ", save_path, file_name)
             ps = sess.run(params)
-            joblib.dump(ps, save_path)
+            make_path(save_path)
+            joblib.dump(ps, save_path+file_name)
 
-        def load(load_path):
-            loaded_params = joblib.load(load_path)
-            restores = []
-            for p, loaded_p in zip(params, loaded_params):
-                restores.append(p.assign(loaded_p))
-            sess.run(restores)
+        def load(load_path, file_name, log=True):
+            try:
+                loaded_params = joblib.load(load_path+file_name)
+                restores = []
+                for p, loaded_p in zip(params, loaded_params):
+                    restores.append(p.assign(loaded_p))
+                ps = sess.run(restores)
+                if log:
+                    logger.info("Loaded from ", load_path, file_name)
+                return True
+            except FileNotFoundError:
+                logger.warn("Loading failed, path does not exist! ", load_path, file_name)
+            return False
 
+        self.loss_names = ['policy_loss', 'value_loss', 'policy_entropy', 'approxkl', 'clipfrac']
         self.train = train
         self.train_model = train_model
         self.act_model = act_model
         self.step = act_model.step
         self.value = act_model.value
-        self.initial_state = act_model.initial_state
+        self.initial_state = act_model.initial_state()
         self.save = save
         self.load = load
         tf.global_variables_initializer().run(session=sess) #pylint: disable=E1101
+
 
 class Runner(object):
 
@@ -135,8 +144,9 @@ class Runner(object):
             delta = mb_rewards[t] + self.gamma * nextvalues * nextnonterminal - mb_values[t]
             mb_advs[t] = lastgaelam = delta + self.gamma * self.lam * nextnonterminal * lastgaelam
         mb_returns = mb_advs + mb_values
-        return (*map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs)), 
-            mb_states, epinfos)
+        return (*map(sf01, (mb_obs, mb_returns, mb_dones, mb_actions, mb_values, mb_neglogpacs)), mb_states, epinfos)
+
+
 # obs, returns, masks, actions, values, neglogpacs, states = runner.run()
 def sf01(arr):
     """
@@ -145,15 +155,17 @@ def sf01(arr):
     s = arr.shape
     return arr.swapaxes(0, 1).reshape(s[0] * s[1], *s[2:])
 
+
 def constfn(val):
     def f(_):
         return val
     return f
 
-def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr, 
+
+def learn(*, policy, policy_args, env, nsteps, total_timesteps, ent_coef, lr,
             vf_coef=0.5,  max_grad_norm=0.5, gamma=0.99, lam=0.95, 
             log_interval=10, nminibatches=4, noptepochs=4, cliprange=0.2,
-            save_interval=0):
+            save_path='', save_name='model'):
 
     if isinstance(lr, float): lr = constfn(lr)
     else: assert callable(lr)
@@ -166,15 +178,12 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
     ac_space = env.action_space
     nbatch = nenvs * nsteps
     nbatch_train = nbatch // nminibatches
+    print(ob_space.shape)  # TODO remove
 
-    make_model = lambda : Model(policy=policy, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs, nbatch_train=nbatch_train, 
-                    nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
-                    max_grad_norm=max_grad_norm)
-    if save_interval and logger.get_dir():
-        import cloudpickle
-        with open(osp.join(logger.get_dir(), 'make_model.pkl'), 'wb') as fh:
-            fh.write(cloudpickle.dumps(make_model))
-    model = make_model()
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs,
+                  nbatch_train=nbatch_train, nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,
+                  max_grad_norm=max_grad_norm)
+    model.load(save_path, save_name)
     runner = Runner(env=env, model=model, nsteps=nsteps, gamma=gamma, lam=lam)
 
     epinfobuf = deque(maxlen=100)
@@ -188,10 +197,10 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
         frac = 1.0 - (update - 1.0) / nupdates
         lrnow = lr(frac)
         cliprangenow = cliprange(frac)
-        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run() #pylint: disable=E0632
+        obs, returns, masks, actions, values, neglogpacs, states, epinfos = runner.run()  # pylint: disable=E0632
         epinfobuf.extend(epinfos)
         mblossvals = []
-        if states is None: # nonrecurrent version
+        if states is None:  # nonrecurrent version
             inds = np.arange(nbatch)
             for _ in range(noptepochs):
                 np.random.shuffle(inds)
@@ -200,9 +209,8 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
                     mbinds = inds[start:end]
                     slices = (arr[mbinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices))
-        else: # recurrent version
+        else:  # recurrent version
             assert nenvs % nminibatches == 0
-            envsperbatch = nenvs // nminibatches
             envinds = np.arange(nenvs)
             flatinds = np.arange(nenvs * nsteps).reshape(nenvs, nsteps)
             envsperbatch = nbatch_train // nsteps
@@ -213,7 +221,8 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
                     mbenvinds = envinds[start:end]
                     mbflatinds = flatinds[mbenvinds].ravel()
                     slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mbstates = states[mbenvinds]
+                    mbstates = MaskedDNC.MaskedDNC.state_subset(states, mbenvinds)
+                    # mbstates = states[mbenvinds]  # TODO make dnc/other work both work
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))            
 
         lossvals = np.mean(mblossvals, axis=0)
@@ -221,6 +230,8 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
         fps = int(nbatch / (tnow - tstart))
         if update % log_interval == 0 or update == 1:
             ev = explained_variance(values, returns)
+            nseconds = time.time()-tfirststart
+            rem_time = (nseconds * nupdates / update) - nseconds
             logger.logkv("serial_timesteps", update*nsteps)
             logger.logkv("nupdates", update)
             logger.logkv("total_timesteps", update*nbatch)
@@ -229,16 +240,66 @@ def learn(*, policy, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
             logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
             logger.logkv('time_elapsed', tnow - tfirststart)
-            for (lossval, lossname) in zip(lossvals, model.loss_names):
-                logger.logkv(lossname, lossval)
+            #for (lossval, lossname) in zip(lossvals, model.loss_names):
+            #    logger.logkv(lossname, lossval)
             logger.dumpkvs()
-        if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir():
-            checkdir = osp.join(logger.get_dir(), 'checkpoints')
-            os.makedirs(checkdir, exist_ok=True)
-            savepath = osp.join(checkdir, '%.5i'%update)
-            print('Saving to', savepath)
-            model.save(savepath)
+            model.save(save_path, save_name)
+            logger.info("Time since start: \t%.2fs" % nseconds)
+            logger.info("ETA: \t\t\t\t%.2fs" % rem_time)
     env.close()
+
 
 def safemean(xs):
     return np.nan if len(xs) == 0 else np.mean(xs)
+
+
+def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model'):
+    tf.reset_default_graph()
+    tf.Session().__enter__()
+    set_global_seeds(seed)
+
+    ob_space = env.observation_space
+    ac_space = env.action_space
+    nstack = 4
+    policy_args['nstack'] = nstack
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nbatch_act=1,
+                  nbatch_train=1, nsteps=1, ent_coef=0.05, vf_coef=0.5,
+                  max_grad_norm=0.5)
+    model.load(save_path, save_name)
+
+    if nep <= 0:
+        DNCVisualizedPlayer.player(env, model, nstack=nstack)
+    else:
+        if len(env.observation_space.shape) == 3:
+            nh, nw, nc = env.observation_space.shape
+            observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
+
+            def update_obs(stored_obs, new_obs):
+                stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
+                stored_obs[:, :, :, -nc:] = new_obs
+                return stored_obs
+        else:
+            nc = env.observation_space.shape[-1]
+            observations = np.zeros((1, nc*nstack), dtype=np.uint8)
+
+            def update_obs(stored_obs, new_obs):
+                stored_obs = np.roll(stored_obs, shift=-nc, axis=1)
+                stored_obs[:, -nc:] = new_obs
+                return stored_obs
+
+        total_reward = 0
+        for e in range(nep):
+            done = False
+            new_obs = env.reset()
+            observations = update_obs(observations, new_obs)
+            states = model.initial_state
+            episode_reward = 0
+            while not done:
+                actions, values, states, _ = model.step(observations, states, [done])
+                new_obs, reward, done, info = env.step(actions[0])
+                observations = update_obs(observations, new_obs)
+                episode_reward += reward
+                env.render()
+            print('Episode reward:', episode_reward)
+            total_reward += episode_reward
+        print('Done! Total reward:', total_reward)

@@ -49,3 +49,18 @@ class MaskedDNC(DNC):
                            ),
                            (tf.concat(controller_states0,  0), tf.concat(controller_states1,  0)))
         return m_output, m_state
+
+    @staticmethod
+    def state_subset(state, inds):
+        return DNCState(state.access_output[inds],
+                        AccessState(
+                            state.access_state.memory[inds],
+                            state.access_state.read_weights[inds],
+                            state.access_state.write_weights[inds],
+                            TemporalLinkageState(
+                                state.access_state.linkage.link[inds],
+                                state.access_state.linkage.precedence_weights[inds]
+                            ),
+                            state.access_state.usage[inds],
+                        ),
+                        (state.controller_state[0][inds], state.controller_state[1][inds]))

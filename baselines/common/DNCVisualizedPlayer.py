@@ -223,7 +223,8 @@ class DNCVisualizedPlayer(tk.Frame):
             self._LOCK.release()
             return False
         self._last_step = time.time()
-        new_action, values, self._model_state = self._model.step(self._observation, self._model_state, [False])
+        response = self._model.step(self._observation, self._model_state, [False])
+        new_action, values, self._model_state = response[0], response[1], response[2]
         new_obs, reward, done, info = self._env.step(new_action[0])
         self._add_actions(new_action)
         self._add_state(self._model_state)
