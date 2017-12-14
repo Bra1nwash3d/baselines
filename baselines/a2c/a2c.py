@@ -22,7 +22,6 @@ class Model(object):
                                 inter_op_parallelism_threads=num_procs)
         config.gpu_options.allow_growth = True
         sess = tf.Session(config=config)
-        nact = ac_space.n
         nbatch = nenvs*nsteps
 
         A = tf.placeholder(tf.int32, [nbatch])
@@ -253,7 +252,6 @@ def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model')
             episode_reward = 0
             while not done:
                 actions, values, states = model.step(observations, states, [done])
-                print(actions)
                 new_obs, reward, done, info = env.step(actions[0])
                 observations = update_obs(observations, new_obs)
                 episode_reward += reward

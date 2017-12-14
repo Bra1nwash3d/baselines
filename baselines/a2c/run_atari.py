@@ -53,7 +53,7 @@ def main():
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
     parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='dnc')
     parser.add_argument('--lrschedule', help='Learning rate schedule', choices=['constant', 'linear'], default='constant')
-    parser.add_argument('--num-timesteps', type=int, default=int(1*10e2))
+    parser.add_argument('--num-timesteps', type=int, default=int(1*10e6))
     args = parser.parse_args()
     t0 = time.time()
     policy_args = {
