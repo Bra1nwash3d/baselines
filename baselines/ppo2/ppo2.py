@@ -178,7 +178,6 @@ def learn(*, policy, policy_args, env, nsteps, total_timesteps, ent_coef, lr,
     ac_space = env.action_space
     nbatch = nenvs * nsteps
     nbatch_train = nbatch // nminibatches
-    print(ob_space.shape)  # TODO remove
 
     model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nbatch_act=nenvs,
                   nbatch_train=nbatch_train, nsteps=nsteps, ent_coef=ent_coef, vf_coef=vf_coef,

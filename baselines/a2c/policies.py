@@ -172,8 +172,8 @@ class DncPolicy(object):
             else:
                 h3 = conv_to_fc(tf.cast(X, tf.float32))
             h4 = fc(h3, 'fc1', nh=512, init_scale=np.sqrt(2))
-            xs = tf.reshape(h4, [nenv, nsteps, -1])  # batch_to_seq(h4, nenv, nsteps)
-            ms = tf.reshape(M, [nenv, nsteps, 1])  # batch_to_seq(M, nenv, nsteps)
+            xs = tf.reshape(h4, [nenv, nsteps, -1])
+            ms = tf.reshape(M, [nenv, nsteps, 1])
             # use nlstm as output size again, so we can add the fc layers like before
             dnc_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000))
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
