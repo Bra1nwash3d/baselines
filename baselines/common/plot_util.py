@@ -40,7 +40,7 @@ def plot_monitors_individually(log_path, rolling_window=20):
         plt.show()
 
 
-def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Training'):
+def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Training', show=True, save_path=False):
     # merge monitors of training session, concat training sessions, correct time spent
     dfs = []
     last_value = 0
@@ -72,10 +72,13 @@ def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Trai
         plt.scatter(range(len(df)), df[col_name], s=[0.2 for _ in range(len(df))])
         plt.plot(range(len(df)), df[col_name].rolling(window=rolling_window).mean(), 'r', linewidth=3)
         plt.ylabel(col_name_to_str(col_name))
-    plt.show()
+    if show:
+        plt.show()
+    if save_path:
+        plt.savefig(save_path)
 
 
-def plot_progress_merged(log_paths, rolling_window=200, title='Training'):
+def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=True, save_path=False):
     # concat progress of training sessions, correct total timesteps and update count spent
     dfs = []
     last_total_timesteps = 0
@@ -107,4 +110,7 @@ def plot_progress_merged(log_paths, rolling_window=200, title='Training'):
         plt.scatter(range(len(df)), df[col_name], s=[0.6 for _ in range(len(df))])
         # plt.plot(range(len(df)), df[col_name].rolling(window=rolling_window).mean(), 'r', linewidth=3)
         plt.ylabel(col_name_to_str(col_name))
-    plt.show()
+    if show:
+        plt.show()
+    if save_path:
+        plt.savefig(save_path)
