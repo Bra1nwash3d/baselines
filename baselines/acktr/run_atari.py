@@ -55,7 +55,7 @@ def main():
         'clip_value': 200000,
         'nlstm': 64,
     }
-    model_path, log_path, policy_args = init_next_training('acktr', args.policy, args.env, policy_args)
+    model_path, log_path, policy_args, _ = init_next_training('acktr', args.policy, args.env, policy_args, {})
     logger.configure(dir=log_path)
     train(policy_args,
           args.env,

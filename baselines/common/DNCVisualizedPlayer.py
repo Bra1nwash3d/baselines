@@ -105,7 +105,7 @@ class DNCVisualizedPlayer(tk.Frame):
             self._update_obs = self._update_obs_3d
         else:
             self._nc = env.observation_space.shape[-1]
-            self._observation = np.zeros((1, self._nc*nstack), dtype=np.uint8)
+            self._observation = np.zeros((1, self._nc*nstack), dtype=np.float32)
             self._update_obs = self._update_obs_1d
         self._update_obs(self._env.reset())
         self._episode_reward = 0

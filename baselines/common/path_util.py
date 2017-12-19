@@ -24,7 +24,7 @@ def _log_path(algorithm_name, policy_name, env_id, training, escapes=2):
     return _training_folder_path(algorithm_name, policy_name, env_id, training, escapes) + 'logs/'
 
 
-def init_next_training(algorithm_name, policy_name, env_id, policy_args, escapes=2):
+def init_next_training(algorithm_name, policy_name, env_id, policy_args, env_args, escapes=2):
     meta_info_path = _meta_info_file(algorithm_name, policy_name, env_id, escapes)
     info = {}
     try:
@@ -51,6 +51,12 @@ def init_next_training(algorithm_name, policy_name, env_id, policy_args, escapes
     else:
         info['policy_args'] = policy_args
 
+    # load environment args if available
+    if info.get('env_args', False):
+        env_args = info.get('env_args')
+    else:
+        info['env_args'] = env_args
+
     # update training info, save
     info['training_started'] = info.get('training_started', 0) + 1
     with open(meta_info_path, 'w+') as file:
@@ -60,7 +66,7 @@ def init_next_training(algorithm_name, policy_name, env_id, policy_args, escapes
     # return necessary paths for training
     model_path = _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
     log_path = _log_path(algorithm_name, policy_name, env_id, info['training_started'], escapes=escapes)
-    return model_path, log_path, policy_args
+    return model_path, log_path, policy_args, env_args
 
 
 def get_log_paths(algorithm_name, policy_name, env_id, escapes=2):
@@ -101,4 +107,4 @@ def get_model_path_and_args(algorithm_name, policy_name, env_id, escapes=2, trai
     except:
         print("Meta info not available, can't find policy args")
         return False, {}
-    return path, info.get('policy_args', {})
+    return path, info.get('policy_args', {}), info.get('env_args', {})

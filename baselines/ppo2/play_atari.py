@@ -22,7 +22,7 @@ def main():
     parser.add_argument('--num-episodes', type=int, default=-1)
     parser.add_argument('--training', type=int, default=-1)
     args = parser.parse_args()
-    model_path, policy_args = get_model_path_and_args('ppo2', args.policy, args.env, training=args.training)
+    model_path, policy_args, _ = get_model_path_and_args('ppo2', args.policy, args.env, training=args.training)
     if model_path:
         play_atari(policy_args,
                    args.env,

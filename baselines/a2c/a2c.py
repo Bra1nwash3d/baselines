@@ -108,7 +108,7 @@ class Runner(object):
         else:
             self.nc = env.observation_space.shape[-1]
             self.batch_ob_shape = (nenv*nsteps, self.nc*nstack)
-            self.obs = np.zeros((nenv, self.nc*nstack), dtype=np.uint8)
+            self.obs = np.zeros((nenv, self.nc*nstack), dtype=np.float32)
             self.update_obs = self.update_obs_1d
         obs = env.reset()
         self.update_obs(obs)
@@ -236,7 +236,7 @@ def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model')
                 return stored_obs
         else:
             nc = env.observation_space.shape[-1]
-            observations = np.zeros((1, nc*nstack), dtype=np.uint8)
+            observations = np.zeros((1, nc*nstack), dtype=np.float32)
 
             def update_obs(stored_obs, new_obs):
                 stored_obs = np.roll(stored_obs, shift=-nc, axis=1)

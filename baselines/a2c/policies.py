@@ -145,12 +145,13 @@ class DncPolicy(object):
             nh, nw, nc = ob_space.shape
             ob_shape = (nbatch, nh, nw, nc*nstack)
             uses_conv = True
+            X = tf.placeholder(tf.uint8, ob_shape)  # obs
         else:
             nc = ob_space.shape[-1]
             ob_shape = (nbatch, nc*nstack)
             uses_conv = False
+            X = tf.placeholder(tf.float32, ob_shape)  # obs
         nact = ac_space.n
-        X = tf.placeholder(tf.uint8, ob_shape)  # obs
         M = tf.placeholder(tf.float32, [nbatch])  # mask (done t-1)
 
         access_config = {
@@ -170,7 +171,7 @@ class DncPolicy(object):
                 h3 = conv(h2, 'c3', nf=64, rf=3, stride=1, init_scale=np.sqrt(2))
                 h3 = conv_to_fc(h3)
             else:
-                h3 = conv_to_fc(tf.cast(X, tf.float32))
+                h3 = conv_to_fc(X)
             h4 = fc(h3, 'fc1', nh=512, init_scale=np.sqrt(2))
             xs = tf.reshape(h4, [nenv, nsteps, -1])
             ms = tf.reshape(M, [nenv, nsteps, 1])
