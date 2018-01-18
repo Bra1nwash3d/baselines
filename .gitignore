@@ -20,6 +20,7 @@ keys/
 
 logs/
 saves/
+launchfiles/
 
 .ipynb_checkpoints
 ghostdriver.log

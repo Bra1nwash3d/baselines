@@ -2,8 +2,17 @@ import os
 import shutil
 import json
 
+base_path = False  # relative path if False
+
+
+def set_base_path(path):
+    global base_path
+    base_path = path
+
 
 def _basic_path(algorithm_name, policy_name, env_id, escapes=2):
+    if base_path:
+        return base_path+algorithm_name+'/'+policy_name+'/'+env_id+'/'
     return os.path.abspath('.'+''.join(['/..' for i in range(escapes)])+
                            '/saves/'+algorithm_name+'/'+policy_name)+'/'+env_id+'/'
 

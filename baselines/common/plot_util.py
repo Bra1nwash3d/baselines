@@ -4,6 +4,17 @@ import re
 import matplotlib.pyplot as plt
 
 
+fig_args = {
+    "inches_x": 12,
+    "inches_y": 9,
+    "dpi": 100,
+}
+
+
+def set_fig_args(args):
+    fig_args.update(args)
+
+
 def col_name_to_str(col_name):
     return {
         'r': 'Total episode reward',
@@ -40,8 +51,7 @@ def plot_monitors_individually(log_path, rolling_window=20):
         plt.show()
 
 
-def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Training', show=True, save_path=False):
-    # merge monitors of training session, concat training sessions, correct time spent
+def _get_monitors_dataframe(log_paths, sort_by='t'):
     dfs = []
     last_value = 0
     for i in range(len(log_paths)):
@@ -59,12 +69,20 @@ def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Trai
             # may fail if the model is training and created a yet empty last set of logs
             break
 
-    col_names = [a for a in dfs[0].axes[1]]
     df = pd.concat(dfs, ignore_index=True)
+    col_names = [a for a in df.axes[1]]
+    return df, col_names
 
+
+def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Training', show=True, save_path=False):
+    """ merge monitors of training session, concat training sessions, correct time spent
+        use this for plotting a single policy
+    """
+    df, col_names = _get_monitors_dataframe(log_paths, sort_by=sort_by)
     fig = plt.figure(1)
     col_names = col_names[:]
     fig.suptitle(title)
+    fig.set_size_inches(fig_args.get('inches_x'), fig_args.get('inches_y'))
     for i in range(len(col_names)):
         # not plotting training time
         col_name = col_names[i]
@@ -75,7 +93,45 @@ def plot_monitors_merged(log_paths, rolling_window=200, sort_by='t', title='Trai
     if show:
         plt.show()
     if save_path:
-        plt.savefig(save_path)
+        plt.savefig(save_path, dpi=fig_args.get('dpi'))
+
+
+def plot_multiple_monitors_merged(log_paths, labels, x_substitute=False, rolling_window=200, sort_by='t',
+                                  title='Training', show=True, save_path=False):
+    """ merge monitors of training session, concat training sessions, correct time spent
+        use this for plotting a multiple policies or environment training samples
+    """
+    dfs = []
+    col_names = []
+    for policy_log_paths in log_paths:
+        print('collecting from', policy_log_paths)
+        df, col_names = _get_monitors_dataframe(policy_log_paths, sort_by=sort_by)
+        dfs.append(df)
+    fig = plt.figure(1)
+    col_names = col_names[:]
+    xlabel = 'episodes'
+    if x_substitute in col_names:
+        col_names.remove(x_substitute)
+        xlabel = col_name_to_str(x_substitute)
+    fig.suptitle(title)
+    fig.set_size_inches(fig_args.get('inches_x'), fig_args.get('inches_y'))
+    for i in range(len(col_names)):
+        # not plotting training time
+        col_name = col_names[i]
+        plt.subplot(len(col_names), 1, i+1)
+        plt.ylabel(col_name_to_str(col_name))
+        plt.xlabel(xlabel)
+        for j in range(len(dfs)):
+            df = dfs[j]
+            x = range(len(df))
+            if x_substitute:
+                x = df[x_substitute]
+            plt.plot(x, df[col_name].rolling(window=rolling_window).mean(), label=labels[j], linewidth=3)
+        plt.legend()
+    if show:
+        plt.show()
+    if save_path:
+        plt.savefig(save_path, dpi=fig_args.get('dpi'))
 
 
 def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=True, save_path=False):
@@ -85,7 +141,6 @@ def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=T
     last_nupdates = 0
     for i in range(len(log_paths)):
         try:
-            local_dfs = []
             log_path = log_paths[i]
             df = pd.read_csv(log_path+'progress.csv', comment='#')
             df['total_timesteps'] += last_total_timesteps
@@ -103,6 +158,7 @@ def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=T
     fig = plt.figure(1)
     col_names = col_names[:]
     fig.suptitle(title)
+    fig.set_size_inches(fig_args.get('inches_x'), fig_args.get('inches_y'))
     for i in range(len(col_names)):
         # not plotting training time
         col_name = col_names[i]
@@ -113,4 +169,4 @@ def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=T
     if show:
         plt.show()
     if save_path:
-        plt.savefig(save_path)
+        plt.savefig(save_path, dpi=fig_args.get('dpi'))
