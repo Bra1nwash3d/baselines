@@ -143,9 +143,10 @@ def plot_progress_merged(log_paths, rolling_window=200, title='Training', show=T
         try:
             log_path = log_paths[i]
             df = pd.read_csv(log_path+'progress.csv', comment='#')
-            df['total_timesteps'] += last_total_timesteps
+            if df['total_timesteps'][0] < last_total_timesteps:
+                df['total_timesteps'] += last_total_timesteps
+                df['nupdates'] += last_nupdates
             last_total_timesteps = df['total_timesteps'][len(df)-1]
-            df['nupdates'] += last_nupdates
             last_nupdates = df['nupdates'][len(df)-1]
             dfs.append(df)
         except:

@@ -5,11 +5,12 @@ from baselines.common.atari_wrappers import make_atari, wrap_deepmind
 from baselines.common.path_util import get_model_path_and_args
 
 
-def play_atari(policy_args, env_id, seed, policy, save_path, num_episodes):
+def play_atari(policy_args, env_id, env_args, seed, policy, save_path, num_episodes):
     env = make_atari(env_id)
     env = wrap_deepmind(env)
     env.seed(seed)
-    play(str_to_policy(policy), policy_args, env, seed, nep=num_episodes, save_path=save_path, save_name='model')
+    play(str_to_policy(policy), policy_args, env, env_args,
+         seed, nep=num_episodes, save_path=save_path, save_name='model')
     env.close()
 
 
@@ -22,10 +23,11 @@ def main():
     parser.add_argument('--num-episodes', type=int, default=-1)
     parser.add_argument('--training', type=int, default=-1)
     args = parser.parse_args()
-    model_path, policy_args, _ = get_model_path_and_args('a2c', args.policy, args.env, training=args.training)
+    model_path, policy_args, env_args = get_model_path_and_args('a2c', args.policy, args.env, training=args.training)
     if model_path:
         play_atari(policy_args,
                    args.env,
+                   env_args,
                    seed=args.seed,
                    policy=args.policy,
                    save_path=model_path,

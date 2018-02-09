@@ -81,18 +81,19 @@ class StateFrame(tk.Frame):
 
 class DNCVisualizedPlayer(tk.Frame):
     @staticmethod
-    def player(env, model, nstack=4):
+    def player(env, model, nstack=4, env_args={}):
         root = tk.Tk()
         root.wm_title("DNC Player")
-        app = DNCVisualizedPlayer(env, model, nstack=nstack, parent=root)
+        app = DNCVisualizedPlayer(env, model, nstack=nstack, env_args=env_args, parent=root)
         app.mainloop()
         return app
 
-    def __init__(self, env, model, nstack=4, parent=None):
+    def __init__(self, env, model, nstack=4, env_args={}, parent=None):
         super().__init__(parent)
         self.pack()
         self._LOCK = threading.Lock()
         self._env = env
+        self._env_args = env_args
         self._model = model
         self._step_min_pause = STEP_MIN_PAUSE
         self._last_step = time.time()
@@ -117,7 +118,7 @@ class DNCVisualizedPlayer(tk.Frame):
         self._num_read_heads = len(self._model_state.access_state.read_weights[0])
         self._num_write_heads = len(self._model_state.access_state.write_weights[0])
 
-        self._num_actions = self._env.action_space.n
+        self._num_actions = self._env_args.get('action_space', self._env.action_space.n)
         self._env.render()
         self._step_button,\
             self._reset_button = self._add_interaction_frame(self)

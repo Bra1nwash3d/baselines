@@ -3,6 +3,7 @@ import joblib
 import numpy as np
 import tensorflow as tf
 from baselines import logger
+from gym.spaces.discrete import Discrete
 
 from baselines.common import set_global_seeds, explained_variance
 
@@ -16,7 +17,7 @@ class Model(object):
 
     def __init__(self, policy, policy_args, ob_space, ac_space, nenvs, nsteps, nstack, num_procs,
             ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, lr=7e-4,
-            alpha=0.99, epsilon=1e-5, total_timesteps=int(80e6), lrschedule='linear'):
+            alpha=0.99, epsilon=1e-5, total_timesteps=int(80e6), trained_timesteps=0, lrschedule='linear'):
         config = tf.ConfigProto(allow_soft_placement=True,
                                 intra_op_parallelism_threads=num_procs,
                                 inter_op_parallelism_threads=num_procs)
@@ -47,6 +48,7 @@ class Model(object):
         _train = trainer.apply_gradients(grads)
 
         lr = Scheduler(v=lr, nvalues=total_timesteps, schedule=lrschedule)
+        lr.n = trained_timesteps  # in case of restart, continue with recently used LR instead of initial one
 
         def train(obs, states, rewards, masks, actions, values):
             advs = rewards - values
@@ -170,7 +172,7 @@ class Runner(object):
         return mb_obs, mb_states, mb_rewards, mb_masks, mb_actions, mb_values
 
 
-def learn(policy, policy_args, env, seed, nsteps=5, nstack=4, total_timesteps=int(80e6),
+def learn(policy, policy_args, env, env_args, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), trained_timesteps=0,
           vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear',
           epsilon=1e-5, alpha=0.99, gamma=0.99, log_interval=100,
           save_path='', save_name='model'):
@@ -180,25 +182,29 @@ def learn(policy, policy_args, env, seed, nsteps=5, nstack=4, total_timesteps=in
     nenvs = env.num_envs
     ob_space = env.observation_space
     ac_space = env.action_space
+    if env_args.get('action_space', False):
+        ac_space = Discrete(env_args.get('action_space', 2))
+
     num_procs = len(env.remotes)  # HACK
     model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=nenvs,
                   nsteps=nsteps, nstack=nstack, num_procs=num_procs, ent_coef=ent_coef, vf_coef=vf_coef,
                   max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps,
-                  lrschedule=lrschedule)
+                  trained_timesteps=trained_timesteps, lrschedule=lrschedule)
     model.load(save_path, save_name)
     runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma)
 
     nbatch = nenvs*nsteps
     tstart = time.time()
     total_updates = total_timesteps//nbatch+1
-    for update in range(1, total_updates):
+    initial_update = trained_timesteps//nbatch+1
+    for update in range(initial_update, total_updates):
         obs, states, rewards, masks, actions, values = runner.run()
         policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
         if update % log_interval == 0 or update == 1:
             nseconds = time.time()-tstart
             fps = int((update*nbatch)/nseconds)
             ev = explained_variance(values, rewards)
-            rem_time = (nseconds * total_updates / update) - nseconds
+            rem_time = (nseconds * (total_updates - initial_update) / (update - initial_update + 1)) - nseconds
             logger.record_tabular("nupdates", update)
             logger.record_tabular("total_timesteps", update*nbatch)
             logger.record_tabular("fps", fps)
@@ -214,19 +220,21 @@ def learn(policy, policy_args, env, seed, nsteps=5, nstack=4, total_timesteps=in
     env.close()
 
 
-def play(policy, policy_args, env, seed, nep=5, save_path='', save_name='model'):
+def play(policy, policy_args, env, env_args, seed, nep=5, nstack=4, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
     ob_space = env.observation_space
     ac_space = env.action_space
-    nstack = 4
+    if env_args.get('action_space', False):
+        ac_space = Discrete(env_args.get('action_space', 2))
+
     model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=1,
                   nsteps=1, nstack=nstack, num_procs=1)
     model.load(save_path, save_name)
 
     if nep <= 0:
-        DNCVisualizedPlayer.player(env, model, nstack=nstack)
+        DNCVisualizedPlayer.player(env, model, nstack=nstack, env_args=env_args)
     else:
         if len(env.observation_space.shape) == 3:
             nh, nw, nc = env.observation_space.shape

@@ -23,7 +23,7 @@ def str_to_policy(policy):
     }.get(policy, DncPolicy)
 
 
-def train(policy_args, env_id, num_timesteps, seed, policy, lrschedule, num_cpu, save_path, nsteps=1):
+def train(policy_args, env_id, env_args, num_timesteps, seed, policy, lrschedule, num_cpu, save_path, nsteps=1):
     def make_env(rank):
         def _thunk():
             env = make_atari(env_id)
@@ -38,6 +38,7 @@ def train(policy_args, env_id, num_timesteps, seed, policy, lrschedule, num_cpu,
     learn(str_to_policy(policy),
           policy_args,
           env,
+          env_args,
           seed,
           nsteps=nsteps,
           total_timesteps=int(num_timesteps * 1.1),
@@ -64,10 +65,12 @@ def main():
         'clip_value': 200000,
         'nlstm': 64,
     }
-    model_path, log_path, policy_args, _ = init_next_training('a2c', args.policy, args.env, policy_args, {})
+    env_args = {}
+    model_path, log_path, policy_args, env_args = init_next_training('a2c', args.policy, args.env, policy_args, env_args)
     logger.configure(dir=log_path)
     train(policy_args,
           args.env,
+          env_args,
           num_timesteps=args.num_timesteps,
           seed=args.seed,
           policy=args.policy,
