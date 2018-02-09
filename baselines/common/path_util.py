@@ -1,6 +1,7 @@
 import os
 import shutil
 import json
+import csv
 
 base_path = False  # relative path if False
 
@@ -33,7 +34,7 @@ def _log_path(algorithm_name, policy_name, env_id, training, escapes=2):
     return _training_folder_path(algorithm_name, policy_name, env_id, training, escapes) + 'logs/'
 
 
-def init_next_training(algorithm_name, policy_name, env_id, policy_args, env_args, escapes=2):
+def init_next_training_args(algorithm_name, policy_name, env_id, policy_args, env_args, escapes=2):
     meta_info_path = _meta_info_file(algorithm_name, policy_name, env_id, escapes)
     info = {}
     try:
@@ -45,14 +46,23 @@ def init_next_training(algorithm_name, policy_name, env_id, policy_args, env_arg
         os.rmdir(meta_info_path)
         pass
 
-    # save model in training folder
+    trained_timesteps = 0
     if info.get('training_started', 0) > 0:
+        # save model in training folder
         path = _basic_path(algorithm_name, policy_name, env_id, escapes)
         paste_location = _training_folder_path(algorithm_name, policy_name, env_id, info['training_started'], escapes=escapes)
         for name in os.listdir(path):
             if (not name.startswith('training')) and (not '.json' in name):
                 os.makedirs(paste_location, exist_ok=True)
                 shutil.copy2(path+name, paste_location+name)
+        # see how many timesteps were already trained
+        log_path = _log_path(algorithm_name, policy_name, env_id, info['training_started'])
+        with open(log_path+'progress.csv') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter=',')
+            last_row = {}
+            for row in reader:
+                last_row = row
+            trained_timesteps = last_row.get('total_timesteps', 0)
 
     # load policy args if available
     if info.get('policy_args', False):
@@ -75,7 +85,18 @@ def init_next_training(algorithm_name, policy_name, env_id, policy_args, env_arg
     # return necessary paths for training
     model_path = _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
     log_path = _log_path(algorithm_name, policy_name, env_id, info['training_started'], escapes=escapes)
-    return model_path, log_path, policy_args, env_args
+    return {
+        'model_path': model_path,
+        'log_path': log_path,
+        'policy_args': policy_args,
+        'env_args': env_args,
+        'trained_timesteps': trained_timesteps,
+    }
+
+
+def init_next_training(algorithm_name, policy_name, env_id, policy_args, env_args, escapes=2):
+    args = init_next_training_args(algorithm_name, policy_name, env_id, policy_args, env_args, escapes=escapes)
+    return args['model_path'], args['log_path'], args['policy_args'], args['env_args']
 
 
 def get_log_paths(algorithm_name, policy_name, env_id, escapes=2):
@@ -102,10 +123,11 @@ def get_model_path_and_args(algorithm_name, policy_name, env_id, escapes=2, trai
         path = _training_folder_path(algorithm_name, policy_name, env_id, training, escapes=2)
     else:
         # most recent model for training <= 0
-        path =  _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
+        path = _model_path(algorithm_name, policy_name, env_id, escapes=escapes)
     if not os.path.exists(path):
         print('Model does not exist!')
-        return False, {}
+        print(path)
+        return False, {}, {}
 
     meta_info_path = _meta_info_file(algorithm_name, policy_name, env_id, escapes)
     info = {}
@@ -115,5 +137,5 @@ def get_model_path_and_args(algorithm_name, policy_name, env_id, escapes=2, trai
             file.close()
     except:
         print("Meta info not available, can't find policy args")
-        return False, {}
+        return False, {}, {}
     return path, info.get('policy_args', {}), info.get('env_args', {})
