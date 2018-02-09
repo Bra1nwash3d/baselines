@@ -6,6 +6,9 @@ This branch adds the [Differentiable Neural Computer (DNC)](https://github.com/d
 #### Seems to work with:
 
 - a2c
+
+#### Seems to work, but badly, with:
+
 - ppo2
 
 #### Seems to not work with:
