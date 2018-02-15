@@ -16,7 +16,7 @@ from baselines.common.DNCVisualizedPlayer import DNCVisualizedPlayer
 class Model(object):
 
     def __init__(self, policy, policy_args, ob_space, ac_space, nenvs, nsteps, nstack, num_procs,
-            ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, lr=7e-4,
+            ent_coef=0.01, vf_coef=0.5, max_grad_norm=0.5, lr=7e-4, momentum=0,
             alpha=0.99, epsilon=1e-5, total_timesteps=int(80e6), trained_timesteps=0, lrschedule='linear'):
         config = tf.ConfigProto(allow_soft_placement=True,
                                 intra_op_parallelism_threads=num_procs,
@@ -44,7 +44,7 @@ class Model(object):
         if max_grad_norm is not None:
             grads, grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
         grads = list(zip(grads, params))
-        trainer = tf.train.RMSPropOptimizer(learning_rate=LR, decay=alpha, epsilon=epsilon)
+        trainer = tf.train.RMSPropOptimizer(learning_rate=LR, decay=alpha, momentum=momentum, epsilon=epsilon)
         _train = trainer.apply_gradients(grads)
 
         lr = Scheduler(v=lr, nvalues=total_timesteps, schedule=lrschedule)
@@ -174,7 +174,7 @@ class Runner(object):
 
 def learn(policy, policy_args, env, env_args, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), trained_timesteps=0,
           vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear',
-          epsilon=1e-5, alpha=0.99, gamma=0.99, log_interval=100,
+          epsilon=1e-5, alpha=0.99, momentum=0, gamma=0.99, log_interval=100,
           save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
@@ -188,8 +188,8 @@ def learn(policy, policy_args, env, env_args, seed, nsteps=5, nstack=4, total_ti
     num_procs = len(env.remotes)  # HACK
     model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=nenvs,
                   nsteps=nsteps, nstack=nstack, num_procs=num_procs, ent_coef=ent_coef, vf_coef=vf_coef,
-                  max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, total_timesteps=total_timesteps,
-                  trained_timesteps=trained_timesteps, lrschedule=lrschedule)
+                  max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, momentum=momentum,
+                  total_timesteps=total_timesteps, trained_timesteps=trained_timesteps, lrschedule=lrschedule)
     model.load(save_path, save_name)
     runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma)
 
