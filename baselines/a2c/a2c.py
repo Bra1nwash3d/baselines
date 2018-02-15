@@ -98,7 +98,7 @@ class Model(object):
 
 class Runner(object):
 
-    def __init__(self, env, model, nsteps=5, nstack=4, gamma=0.99):
+    def __init__(self, env, model, nsteps=5, nstack=4, gamma=0.99, step_alive_reward=0, episode_end_reward=0):
         self.env = env
         self.model = model
         nenv = env.num_envs
@@ -118,6 +118,8 @@ class Runner(object):
         self.update_obs(obs)
         self.gamma = gamma
         self.nsteps = nsteps
+        self.step_alive_reward = step_alive_reward
+        self.episode_end_reward = episode_end_reward
         self.states = model.initial_state
         self.dones = [False for _ in range(nenv)]
 
@@ -156,6 +158,7 @@ class Runner(object):
         mb_masks = mb_dones[:, :-1]
         mb_dones = mb_dones[:, 1:]
         last_values = self.model.value(self.obs, self.states, self.dones).tolist()
+        mb_rewards += self.step_alive_reward + self.episode_end_reward*mb_dones
         #discount/bootstrap off value fn
         for n, (rewards, dones, value) in enumerate(zip(mb_rewards, mb_dones, last_values)):
             rewards = rewards.tolist()
@@ -175,7 +178,7 @@ class Runner(object):
 def learn(policy, policy_args, env, env_args, seed, nsteps=5, nstack=4, total_timesteps=int(80e6), trained_timesteps=0,
           vf_coef=0.5, ent_coef=0.01, max_grad_norm=0.5, lr=7e-4, lrschedule='linear',
           epsilon=1e-5, alpha=0.99, momentum=0, gamma=0.99, log_interval=100,
-          save_path='', save_name='model'):
+          step_alive_reward=0, episode_end_reward=0, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
@@ -191,7 +194,8 @@ def learn(policy, policy_args, env, env_args, seed, nsteps=5, nstack=4, total_ti
                   max_grad_norm=max_grad_norm, lr=lr, alpha=alpha, epsilon=epsilon, momentum=momentum,
                   total_timesteps=total_timesteps, trained_timesteps=trained_timesteps, lrschedule=lrschedule)
     model.load(save_path, save_name)
-    runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma)
+    runner = Runner(env, model, nsteps=nsteps, nstack=nstack, gamma=gamma,
+                    step_alive_reward=step_alive_reward, episode_end_reward=episode_end_reward)
 
     nbatch = nenvs*nsteps
     tstart = time.time()
