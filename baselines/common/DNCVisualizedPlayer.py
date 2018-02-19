@@ -2,6 +2,7 @@ import tkinter as tk
 import numpy as np
 import threading
 import time
+from collections import Iterable
 
 
 VALUE_MARKER_SIZE = 10
@@ -34,9 +35,15 @@ class StateFrame(tk.Frame):
         self._num_words = num_words
         self._num_read_heads = num_read_heads
         self._num_write_heads = num_write_heads
-        self._actions_frame = tk.LabelFrame(self, text='Actions')
-        self._actions_frame.pack(side='top', anchor='w', fill='y')
+
+        self._actions_frames = []
         self._action_recent = []
+        for i in range(len(num_actions)):
+            af = tk.LabelFrame(self, text='Action ' + str(i))
+            af.pack(side='top', anchor='w', fill='y')
+            self._actions_frames.append(af)
+            self._action_recent.append([])
+
         self._read_weights_frames = []
         self._read_weights_recent = []
         for i in range(num_read_heads):
@@ -44,6 +51,7 @@ class StateFrame(tk.Frame):
             rwf.pack(side='top', anchor='w', fill='y')
             self._read_weights_frames.append(rwf)
             self._read_weights_recent.append([])
+
         self._write_weights_frames = []
         self._write_weights_recent = []
         for i in range(num_write_heads):
@@ -51,10 +59,12 @@ class StateFrame(tk.Frame):
             wwf.pack(side='top', anchor='w', fill='y')
             self._write_weights_frames.append(wwf)
             self._write_weights_recent.append([])
+
         self._add_zero_init()
 
     def _add_zero_init(self):
-        self._append(self._action_recent, self._actions_frame, np.zeros(self._num_actions))
+        for i in range(len(self._actions_frames)):
+            self._append(self._action_recent[i], self._actions_frames[i], np.zeros(self._num_actions[i]))
         for i in range(len(self._read_weights_frames)):
             self._append(self._read_weights_recent[i], self._read_weights_frames[i], np.zeros(self._num_words))
         for i in range(len(self._write_weights_frames)):
@@ -65,10 +75,15 @@ class StateFrame(tk.Frame):
         while len(lst) > MAX_RECENT_STEPS:
             lst.pop(0).destroy()
 
-    def add_action_vector(self, action_index):
-        a = np.zeros(self._num_actions)
-        a[action_index] = 1
-        self._append(self._action_recent, self._actions_frame, a)
+    def add_action_vector(self, actions):
+        if not isinstance(actions, Iterable):
+            actions = [actions]
+        a = []
+        for i in range(len(self._num_actions)):
+            a.append(np.zeros(self._num_actions[i]))
+            a[i][actions[i]] = 1
+        for i in range(len(self._actions_frames)):
+            self._append(self._action_recent[i], self._actions_frames[i], a[i])
         return self._parent.winfo_width()
 
     def add_weights(self, read_weights, write_weights):
@@ -101,13 +116,23 @@ class DNCVisualizedPlayer(tk.Frame):
         self._can_reset = True
 
         if len(env.observation_space.shape) == 3:
+            # 3d for pixel
             nh, nw, self._nc = env.observation_space.shape
             self._observation = np.zeros((1, nh, nw, self._nc*nstack), dtype=np.uint8)
             self._update_obs = self._update_obs_3d
-        else:
+            self._change_action = self._change_actions_unchanged
+        elif len(env.observation_space.shape) == 1:
+            # 1d for classic
             self._nc = env.observation_space.shape[-1]
             self._observation = np.zeros((1, self._nc*nstack), dtype=np.float32)
             self._update_obs = self._update_obs_1d
+            self._change_action = self._change_actions_unchanged
+        else:
+            # 0d for algorithmic
+            self._observation = np.zeros((1, 1), dtype=np.float32)
+            self._update_obs = self._update_obs_0d
+            self._change_action = self._change_actions_algorithmic
+
         self._update_obs(self._env.reset())
         self._episode_reward = 0
         self._episode_steps = 0
@@ -118,7 +143,12 @@ class DNCVisualizedPlayer(tk.Frame):
         self._num_read_heads = len(self._model_state.access_state.read_weights[0])
         self._num_write_heads = len(self._model_state.access_state.write_weights[0])
 
-        self._num_actions = self._env_args.get('action_space', self._env.action_space.n)
+        if hasattr(self._env.action_space, 'spaces'):
+            # multiple actions chosen, just one number here as num_actions is only used to estimate a window height
+            self._num_actions = [s.n for s in self._env.action_space.spaces]
+        else:
+            # just one action, as in any non-algorithmic environment
+            self._num_actions = [self._env_args.get('action_space', self._env.action_space.n)]
         self._env.render()
         self._step_button,\
             self._reset_button = self._add_interaction_frame(self)
@@ -128,7 +158,8 @@ class DNCVisualizedPlayer(tk.Frame):
         parent.bind('s', self.step)
         parent.bind('r', self.reset)
 
-        height = (self._num_write_heads + self._num_read_heads) * (self._num_words+3) + self._num_actions + 3
+        height = (self._num_write_heads + self._num_read_heads) * (self._num_words+3) + \
+                 sum(self._num_actions) + (len(self._num_actions)-1)*3 + 3
         height *= VALUE_MARKER_SIZE
         self._canvas = tk.Canvas(self, width=WINDOW_WIDTH, height=height, scrollregion=(0, 0, 0, 0))
         self._canvas.pack()
@@ -148,6 +179,15 @@ class DNCVisualizedPlayer(tk.Frame):
     def _update_obs_1d(self, new_obs):
         self._observation = np.roll(self._observation, shift=-self._nc, axis=1)
         self._observation[:, -self._nc:] = new_obs
+
+    def _update_obs_0d(self, new_obs):
+        self._observation = [[new_obs]]
+
+    def _change_actions_unchanged(self, actions):
+        return actions
+
+    def _change_actions_algorithmic(self, actions):
+        return [list(a) for a in np.array(actions).swapaxes(0, 1)]
 
     def _update_scrolling(self, width):
         self._canvas.configure(scrollregion=(0, 0, width+10, 0))
@@ -226,6 +266,7 @@ class DNCVisualizedPlayer(tk.Frame):
         self._last_step = time.time()
         response = self._model.step(self._observation, self._model_state, [False])
         new_action, values, self._model_state = response[0], response[1], response[2]
+        new_action = self._change_action(new_action)
         new_obs, reward, done, info = self._env.step(new_action[0])
         self._add_actions(new_action)
         self._add_state(self._model_state)
