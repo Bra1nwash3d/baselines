@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
-from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm, sample
-from baselines.common.distributions import make_pdtype
-from baselines.common.MaskedDNC import MaskedDNC, MaskedDNCInput
 
+from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm, sample
+from baselines.common.DNC.MaskedDNC import MaskedDNC, MaskedDNCInput
+from baselines.common.distributions import make_pdtype
 
 
 class LnLstmPolicy(object):

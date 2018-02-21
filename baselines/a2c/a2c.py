@@ -1,16 +1,16 @@
 import time
+
 import joblib
 import numpy as np
 import tensorflow as tf
-from baselines import logger
 from gym.spaces.discrete import Discrete
 
-from baselines.common import set_global_seeds, explained_variance
-
-from baselines.a2c.utils import discount_with_dones
+from baselines import logger
 from baselines.a2c.utils import Scheduler, make_path, find_trainable_variables
 from baselines.a2c.utils import cat_entropy, mse
-from baselines.common.DNCVisualizedPlayer import DNCVisualizedPlayer
+from baselines.a2c.utils import discount_with_dones
+from baselines.common import set_global_seeds, explained_variance
+from baselines.common.DNC.DNCVisualizedPlayer import DNCVisualizedPlayer
 
 
 class Model(object):

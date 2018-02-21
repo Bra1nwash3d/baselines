@@ -1,12 +1,15 @@
 import time
+from collections import deque
+
 import joblib
 import numpy as np
 import tensorflow as tf
+
 from baselines import logger
-from collections import deque
-from baselines.common import explained_variance, MaskedDNC, set_global_seeds
-from baselines.common.DNCVisualizedPlayer import DNCVisualizedPlayer
 from baselines.a2c.utils import make_path
+from baselines.common import explained_variance, set_global_seeds
+from baselines.common.DNC import MaskedDNC
+from baselines.common.DNC.DNCVisualizedPlayer import DNCVisualizedPlayer
 
 
 class Model(object):

@@ -1,8 +1,9 @@
 import numpy as np
 import tensorflow as tf
-from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div, seq_to_batch
+
 import baselines.common.tf_util as U
-from baselines.common.MaskedDNC import MaskedDNC, MaskedDNCInput
+from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div, seq_to_batch
+from baselines.common.DNC.MaskedDNC import MaskedDNC, MaskedDNCInput
 
 
 class CnnPolicy(object):
