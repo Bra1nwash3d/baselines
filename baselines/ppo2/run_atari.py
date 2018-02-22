@@ -64,10 +64,14 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='dnc')
+    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='lstm')
     parser.add_argument('--num-timesteps', type=int, default=int(10e8))
     args = parser.parse_args()
     logger.configure()
+
+    """
+    # Use this for DNC policy.
+    # Also requires a small code change in ppo2.py to use the dnc state subset for training
     policy_args = {
         'memory_size': 8,
         'word_size': 8,
@@ -75,7 +79,11 @@ def main():
         'num_write_heads': 1,
         'clip_value': 200000,
         'nlstm': 64,
+    }"""
+    policy_args = {
+        'nlstm': 256,
     }
+
     model_path, log_path, policy_args, _ = init_next_training('ppo2', args.policy, args.env, policy_args, {})
     logger.configure(dir=log_path)
     t0 = time.time()

@@ -223,8 +223,11 @@ def learn(*, policy, policy_args, env, nsteps, total_timesteps, ent_coef, lr,
                     mbenvinds = envinds[start:end]
                     mbflatinds = flatinds[mbenvinds].ravel()
                     slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
-                    mbstates = MaskedDNC.MaskedDNC.state_subset(states, mbenvinds)
-                    # mbstates = states[mbenvinds]  # TODO make dnc/other work both work
+
+                    # TODO make dnc/other work both work
+                    # mbstates = MaskedDNC.MaskedDNC.state_subset(states, mbenvinds)
+                    mbstates = states[mbenvinds]
+
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))            
 
         lossvals = np.mean(mblossvals, axis=0)
@@ -242,8 +245,8 @@ def learn(*, policy, policy_args, env, nsteps, total_timesteps, ent_coef, lr,
             logger.logkv('eprewmean', safemean([epinfo['r'] for epinfo in epinfobuf]))
             logger.logkv('eplenmean', safemean([epinfo['l'] for epinfo in epinfobuf]))
             logger.logkv('time_elapsed', tnow - tfirststart)
-            #for (lossval, lossname) in zip(lossvals, model.loss_names):
-            #    logger.logkv(lossname, lossval)
+            for (lossval, lossname) in zip(lossvals, model.loss_names):
+                logger.logkv(lossname, lossval)
             logger.dumpkvs()
             model.save(save_path, save_name)
             logger.info("Time since start: \t%.2fs" % nseconds)
