@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='Copy-v0')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--policy', help='Policy architecture', choices=['dncalg'], default='dncalg')
+    parser.add_argument('--policy', help='Policy architecture', choices=['dncalg', 'dncalg2'], default='dncalg')
     parser.add_argument('--num-episodes', type=int, default=-1)
     parser.add_argument('--training', type=int, default=-1)
     args = parser.parse_args()

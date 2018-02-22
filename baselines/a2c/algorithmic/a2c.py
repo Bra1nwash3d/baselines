@@ -159,7 +159,6 @@ class Runner(object):
                 rewards = discount_with_dones(rewards, dones, self.gamma)
             mb_rewards[n] = rewards
         mb_rewards = mb_rewards.flatten()
-        # TODO actions, zero dim is about different actions
         mb_actions = [mb_actions[i].flatten() for i in range(len(mb_actions))]
         mb_values = mb_values.flatten()
         mb_masks = mb_masks.flatten()

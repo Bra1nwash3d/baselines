@@ -7,7 +7,7 @@ import time
 from baselines import bench
 from baselines import logger
 from baselines.a2c.algorithmic.a2c import learn
-from baselines.a2c.algorithmic.policies import DncPolicy
+from baselines.a2c.algorithmic.policies import DncPolicy, DncPolicy2
 from baselines.common import set_global_seeds
 from baselines.common.atari_wrappers import NoopResetEnv, MaxAndSkipEnv, EpisodicLifeEnv, ScaledFloatFrame, \
     ClipRewardEnv, FrameStack, WarpFrame
@@ -47,6 +47,7 @@ def make_env(env_id, env_args, rank=0, seed=0):
 def str_to_policy(policy):
     return {
         'dncalg': DncPolicy,
+        'dncalg2': DncPolicy2,
     }.get(policy, DncPolicy)
 
 
@@ -71,7 +72,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='Copy-v0')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--policy', help='Policy architecture', choices=['dncalg'], default='dncalg')
+    parser.add_argument('--policy', help='Policy architecture', choices=['dncalg', 'dncalg2'], default='dncalg')
     parser.add_argument('--lrschedule', help='Learning rate schedule', choices=['constant', 'linear'], default='constant')
     parser.add_argument('--num-timesteps', type=int, default=int(10e5))
     args = parser.parse_args()
