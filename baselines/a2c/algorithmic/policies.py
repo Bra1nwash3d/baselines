@@ -98,8 +98,8 @@ class DncPolicy2(object):
             # use nlstm as output size again, so we can add the fc layers like before
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
 
-            dnc_actor_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000))
-            dnc_critic_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000))
+            dnc_actor_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000), name='actor')
+            dnc_critic_model = MaskedDNC(access_config, controller_config, nlstm, args.get('clip_value', 200000), name='critic')
             S = AC_State(actor_state=dnc_actor_model.initial_state(nenv),
                          critic_state=dnc_critic_model.initial_state(nenv))
             actor_S = S.actor_state
