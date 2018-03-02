@@ -21,6 +21,8 @@ keys/
 .idea
 
 logs/
+saves/
+launchfiles/
 
 .ipynb_checkpoints
 ghostdriver.log
