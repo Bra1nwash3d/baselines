@@ -181,13 +181,17 @@ class DNCVisualizedPlayer(tk.Frame):
         self._observation[:, -self._nc:] = new_obs
 
     def _update_obs_0d(self, new_obs):
-        self._observation = [[new_obs]]
+        print('newobs', new_obs)
+        self._observation = [new_obs]
 
     def _change_actions_unchanged(self, actions):
         return actions
 
     def _change_actions_algorithmic(self, actions):
-        return [list(a) for a in np.array(actions).swapaxes(0, 1)]
+        changed_action = [np.array(actions).flatten().tolist()]
+        print('ca:', changed_action)
+        print('type:', type(changed_action))
+        return changed_action
 
     def _update_scrolling(self, width):
         self._canvas.configure(scrollregion=(0, 0, width+10, 0))
