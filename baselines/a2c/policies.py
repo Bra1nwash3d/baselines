@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm
 from baselines.common.distributions import make_pdtype
-from baselines.common.DNC.MaskedDNC import MaskedDNC, MaskedDNCInput
+from baselines.common.DNC.MaskedRNN import MaskedDNC, MaskedRNNInput
 
 
 def nature_cnn(unscaled_images):
@@ -141,7 +141,7 @@ class DncPolicy(object):
                                   args.get('num_dnc_out', 256), args.get('clip_value', 200000))
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
             S = dnc_model.initial_state(nenv)  # states
-            dnc_input = MaskedDNCInput(
+            dnc_input = MaskedRNNInput(
                 input=xs,
                 mask=ms
             )

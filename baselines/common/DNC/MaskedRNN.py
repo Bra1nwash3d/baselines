@@ -5,7 +5,7 @@ from addressing import TemporalLinkageState
 import collections
 
 
-MaskedDNCInput = collections.namedtuple('MaskedDNCInput', ('input', 'mask'))
+MaskedRNNInput = collections.namedtuple('MaskedDNCInput', ('input', 'mask'))
 
 
 class MaskedDNC(DNC):

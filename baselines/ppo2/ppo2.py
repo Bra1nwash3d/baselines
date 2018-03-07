@@ -6,7 +6,7 @@ from baselines import logger
 from collections import deque
 from baselines.common import explained_variance
 from baselines.a2c.utils import make_path
-from baselines.common.DNC import MaskedDNC
+from baselines.common.DNC import MaskedRNN
 
 
 class Model(object):
