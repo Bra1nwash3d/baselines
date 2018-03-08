@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm
 from baselines.common.distributions import make_pdtype
-from baselines.common.DNC.MaskedRNN import MaskedDNC, MaskedRNNInput
+from baselines.common.DNC.MaskedRNN import MaskedDNC2 as MaskedDNC, MaskedLSTM, MaskedRNNInput
 
 
 def nature_cnn(unscaled_images):
@@ -101,6 +101,63 @@ class LstmPolicy(object):
 
         def initial_state():
             return self._initial_state
+
+        self.X = X
+        self.M = M
+        self.S = S
+        self.pi = pi
+        self.vf = vf
+        self.step = step
+        self.value = value
+        self.initial_state = initial_state
+
+
+class Lstm2Policy(object):
+
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, args={}, reuse=False):
+        nlstm = args.get('nlstm', 256)
+        nenv = nbatch // nsteps
+
+        nh, nw, nc = ob_space.shape
+        ob_shape = (nbatch, nh, nw, nc)
+        nact = ac_space.n
+        X = tf.placeholder(tf.uint8, ob_shape) #obs
+        M = tf.placeholder(tf.float32, [nbatch]) #mask (done t-1)
+        with tf.variable_scope("model", reuse=reuse):
+            h = nature_cnn(X)
+            xs = tf.reshape(h, [nenv, nsteps, -1])
+            ms = tf.reshape(M, [nenv, nsteps, -1])
+            ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
+            lstm_model = MaskedLSTM(nlstm)
+            S = lstm_model.zero_state(nenv, tf.float32)  # states
+            rnn_input = MaskedRNNInput(
+                input=xs,
+                mask=ms
+            )
+            h5, snew = tf.nn.dynamic_rnn(
+                cell=lstm_model,
+                inputs=rnn_input,
+                time_major=False,
+                initial_state=S)
+            h5 = seq_to_batch(h5)
+            pi = fc(h5, 'pi', nact)
+            vf = fc(h5, 'v', 1)
+
+        self.pdtype = make_pdtype(ac_space)
+        self.pd = self.pdtype.pdfromflat(pi)
+
+        v0 = vf[:, 0]
+        a0 = self.pd.sample()
+        neglogp0 = self.pd.neglogp(a0)
+
+        def step(ob, state, mask):
+            return sess.run([a0, v0, snew, neglogp0], {X:ob, S:state, M:mask})
+
+        def value(ob, state, mask):
+            return sess.run(v0, {X:ob, S:state, M:mask})
+
+        def initial_state():
+            return sess.run(S)
 
         self.X = X
         self.M = M

@@ -209,8 +209,7 @@ def play(policy, policy_args, env, env_args, seed, nep=5, nstack=4, save_path=''
     if env_args.get('action_space', False):
         ac_space = Discrete(env_args.get('action_space', 2))
 
-    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=1,
-                  nsteps=1, num_procs=1)
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1)
     model.load(save_path, save_name)
 
     if nep <= 0:
@@ -221,8 +220,7 @@ def play(policy, policy_args, env, env_args, seed, nep=5, nstack=4, save_path=''
             observations = np.zeros((1, nh, nw, nc*nstack), dtype=np.uint8)
 
             def update_obs(stored_obs, new_obs):
-                stored_obs = np.roll(stored_obs, shift=-nc, axis=3)
-                stored_obs[:, :, :, -nc:] = new_obs
+                stored_obs = [new_obs]
                 return stored_obs
         else:
             nc = env.observation_space.shape[-1]
@@ -241,7 +239,7 @@ def play(policy, policy_args, env, env_args, seed, nep=5, nstack=4, save_path=''
             states = model.initial_state
             episode_reward = 0
             while not done:
-                actions, values, states = model.step(observations, states, [done])
+                actions, values, states, _ = model.step(observations, states, [done])
                 new_obs, reward, done, info = env.step(actions[0])
                 observations = update_obs(observations, new_obs)
                 episode_reward += reward

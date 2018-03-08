@@ -5,13 +5,14 @@ from baselines.common.path_util import init_next_training
 from baselines.common.cmd_util import make_atari_env, atari_arg_parser
 from baselines.common.vec_env.vec_frame_stack import VecFrameStack
 from baselines.a2c.a2c import learn
-from baselines.a2c.policies import CnnPolicy, LstmPolicy, LnLstmPolicy, DncPolicy
+from baselines.a2c.policies import CnnPolicy, LstmPolicy, Lstm2Policy, LnLstmPolicy, DncPolicy
 
 
 def str_to_policy(policy):
     return {
         'cnn': CnnPolicy,
         'lstm': LstmPolicy,
+        'lstm2': Lstm2Policy,
         'lnlstm': LnLstmPolicy,
         'dnc': DncPolicy,
     }.get(policy, CnnPolicy)
@@ -27,7 +28,7 @@ def train(env_id, env_args, policy_args, num_timesteps, seed, policy, lrschedule
 
 def main():
     parser = atari_arg_parser()
-    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='cnn')
+    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lstm2', 'lnlstm', 'dnc'], default='cnn')
     parser.add_argument('--lrschedule', help='Learning rate schedule', choices=['constant', 'linear'], default='constant')
     args = parser.parse_args()
     policy_args = {}

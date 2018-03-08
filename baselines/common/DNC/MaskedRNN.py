@@ -5,7 +5,7 @@ from addressing import TemporalLinkageState
 import collections
 
 
-MaskedRNNInput = collections.namedtuple('MaskedDNCInput', ('input', 'mask'))
+MaskedRNNInput = collections.namedtuple('MaskedRNNInput', ('input', 'mask'))
 
 
 class MaskedDNC(DNC):
@@ -63,3 +63,55 @@ class MaskedDNC(DNC):
                             state.access_state.usage[inds],
                         ),
                         (state.controller_state[0][inds], state.controller_state[1][inds]))
+
+
+class MaskedDNC2(DNC):
+    def _build(self, inputs, prev_state):
+        # first resets batch-specific state parts to zero (depending on mask), then performs original DNC action
+        batch_size = inputs.mask.get_shape().as_list()[0]
+        mask2 = tf.reshape(inputs.mask, [batch_size, 1])
+        mask3 = tf.reshape(inputs.mask, [batch_size, 1, 1])
+        mask4 = tf.reshape(inputs.mask, [batch_size, 1, 1, 1])
+
+        m_state = DNCState(access_output=tf.multiply(prev_state.access_output, mask3),
+                           access_state=AccessState(
+                               tf.multiply(prev_state.access_state.memory, mask3),
+                               tf.multiply(prev_state.access_state.read_weights, mask3),
+                               tf.multiply(prev_state.access_state.write_weights, mask3),
+                               TemporalLinkageState(
+                                   tf.multiply(prev_state.access_state.linkage.link, mask4),
+                                   tf.multiply(prev_state.access_state.linkage.precedence_weights, mask3)
+                               ),
+                               tf.multiply(prev_state.access_state.usage, mask2),
+                           ),
+                           controller_state=(tf.multiply(prev_state.controller_state[0], mask2),
+                                             tf.multiply(prev_state.controller_state[1], mask2),))
+        return DNC._build(self, inputs.input, m_state)
+
+    @staticmethod
+    def state_subset(state, inds):
+        return DNCState(state.access_output[inds],
+                        AccessState(
+                            state.access_state.memory[inds],
+                            state.access_state.read_weights[inds],
+                            state.access_state.write_weights[inds],
+                            TemporalLinkageState(
+                                state.access_state.linkage.link[inds],
+                                state.access_state.linkage.precedence_weights[inds]
+                            ),
+                            state.access_state.usage[inds],
+                        ),
+                        (state.controller_state[0][inds], state.controller_state[1][inds]))
+
+
+class MaskedLSTM(tf.nn.rnn_cell.LSTMCell):
+    def __init__(self, num_units, **kwargs):
+        super(MaskedLSTM, self).__init__(num_units=num_units, **kwargs)
+
+    def call(self, inputs, state):
+        c, h = state
+        m_state = tf.nn.rnn_cell.LSTMStateTuple(c=tf.multiply(c, inputs.mask),
+                                                h=tf.multiply(h, inputs.mask))
+        out, out_state = tf.nn.rnn_cell.LSTMCell.call(self, inputs.input, m_state)
+        return out, out_state
+

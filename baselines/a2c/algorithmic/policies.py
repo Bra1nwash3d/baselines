@@ -1,8 +1,7 @@
-import numpy as np
 import tensorflow as tf
-from baselines.a2c.utils import conv, fc, conv_to_fc, batch_to_seq, seq_to_batch, lstm, lnlstm
+from baselines.a2c.utils import fc
 from baselines.common.distributions import make_pdtype
-from baselines.common.DNC.MaskedRNN import MaskedDNC, MaskedRNNInput
+from baselines.common.DNC.MaskedRNN import MaskedDNC2 as MaskedDNC, MaskedRNNInput
 
 
 class AlgorithmicDncPolicy(object):
@@ -23,20 +22,13 @@ class AlgorithmicDncPolicy(object):
 
         with tf.variable_scope("model", reuse=reuse):
             xs = tf.one_hot(X, ob_space.n)
-            # xs = tf.convert_to_tensor(batch_to_seq(xs, nenv, nsteps))
-            # ms = tf.convert_to_tensor(batch_to_seq(M, nenv, nsteps))
             xs = tf.reshape(xs, [nenv, nsteps, -1])
             ms = tf.reshape(M, [nenv, nsteps, -1])
-            # use nlstm as output size again, so we can add the fc layers like before
             dnc_model = MaskedDNC(access_config,
                                   controller_config,
                                   args.get('num_dnc_out', 256),
                                   args.get('clip_value', 200000))
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
-            print('X', X)
-            print('M', M)
-            print('xs', xs)
-            print('ms', ms)
             S = dnc_model.initial_state(nenv)  # states
             dnc_input = MaskedRNNInput(
                 input=xs,
@@ -45,17 +37,12 @@ class AlgorithmicDncPolicy(object):
             h5, snew = tf.nn.dynamic_rnn(
                 cell=dnc_model,
                 inputs=dnc_input,
-                time_major=False,  # TODO actually batch major?
+                time_major=False,
                 initial_state=S)
-            # h5 = seq_to_batch(h5)
             h5 = tf.reshape(h5, [nenv*nsteps, -1])
 
             pi = fc(h5, 'pi', sum(ac_space.nvec))
             vf = fc(h5, 'v', 1)
-
-            print('vf', vf)
-            print('pi', pi)
-            print('')
 
         self.pdtype = make_pdtype(ac_space)
         self.pd = self.pdtype.pdfromflat(pi)
