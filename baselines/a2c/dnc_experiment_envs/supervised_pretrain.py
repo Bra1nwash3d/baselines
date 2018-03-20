@@ -44,7 +44,7 @@ class Model(object):
             model_in_ms = model.dnc_in_ms
             model_out = model.dnc_out
 
-            s = ob_space.n
+            s = len(ob_space.nvec)
             s_rem = model_out.get_shape().as_list()[2] - 2*s
             targs_f, targs_b, _ = tf.split(model_out, num_or_size_splits=[s, s, s_rem], axis=2)
             train_shape = (nenvs, nsteps, s)
@@ -123,7 +123,7 @@ def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100,
 
     recent_avg_len, recent_loss = 0, 0
     cur_max_len = start_len
-    task = PretrainTask(nenvs, ob_space.n)
+    task = PretrainTask(nenvs, len(ob_space.nvec))
     # generate models with different lengths but shared variables, easier than changing the policy
     models = [Model(sess, policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space,
                     max_grad_norm=50, nenvs=nenvs, nsteps=1, reuse=False)]

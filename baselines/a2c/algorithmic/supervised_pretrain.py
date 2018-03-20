@@ -112,7 +112,7 @@ class Model(object):
         tf.global_variables_initializer().run(session=sess)
 
 
-def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100, max_len=9, start_len=3,
+def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100, max_len=9, start_len=4,
           max_iterations=10e6, max_loss_to_increase=0.05, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
