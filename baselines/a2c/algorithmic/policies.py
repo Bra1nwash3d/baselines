@@ -21,9 +21,10 @@ class AlgorithmicDncPolicy(object):
         }
 
         with tf.variable_scope("model", reuse=reuse):
-            xs = tf.one_hot(X, ob_space.n)
-            xs = tf.reshape(xs, [nenv, nsteps, -1])
-            ms = tf.reshape(M, [nenv, nsteps, -1])
+            xs = tf.reshape(X, [nenv, nsteps, 1], name='xs')
+            xs_oh = tf.one_hot(xs, ob_space.n)
+            xs_oh = tf.squeeze(xs_oh, axis=2)
+            ms = tf.reshape(M, [nenv, nsteps, 1])
             dnc_model = MaskedDNC(access_config,
                                   controller_config,
                                   args.get('num_dnc_out', 256),
@@ -31,15 +32,15 @@ class AlgorithmicDncPolicy(object):
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
             S = dnc_model.initial_state(nenv)  # states
             dnc_input = MaskedRNNInput(
-                input=xs,
+                input=xs_oh,
                 mask=ms
             )
-            h5, snew = tf.nn.dynamic_rnn(
+            dnc_out, snew = tf.nn.dynamic_rnn(
                 cell=dnc_model,
                 inputs=dnc_input,
                 time_major=False,
                 initial_state=S)
-            h5 = tf.reshape(h5, [nenv*nsteps, -1])
+            h5 = tf.reshape(dnc_out, [nenv*nsteps, -1])
 
             pi = fc(h5, 'pi', sum(ac_space.nvec))
             vf = fc(h5, 'v', 1)
@@ -68,3 +69,6 @@ class AlgorithmicDncPolicy(object):
         self.step = step
         self.value = value
         self.initial_state = initial_state
+        self.dnc_in_ms = ms
+        self.dnc_in_xs = xs
+        self.dnc_out = dnc_out

@@ -10,7 +10,7 @@ class DncMbPolicy(object):
 
     def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, args, reuse=False):
         nenv = nbatch // nsteps
-        X = tf.placeholder(tf.uint8, shape=(nbatch, ob_space.n), name='X')  # obs
+        X = tf.placeholder(tf.uint8, shape=(nbatch, len(ob_space.nvec)), name='X')  # obs
         M = tf.placeholder(tf.float32, [nbatch], name='M')  # mask (done t-1)
 
         access_config = {
@@ -24,7 +24,7 @@ class DncMbPolicy(object):
         }
 
         with tf.variable_scope("model", reuse=reuse):
-            xs = tf.one_hot(X, ob_space.depth)
+            xs = tf.one_hot(X, ob_space.nvec[0])
             xs = tf.contrib.layers.flatten(xs)
             xs = tf.reshape(xs, [nenv, nsteps, -1])
             ms = tf.reshape(M, [nenv, nsteps, -1])
@@ -79,7 +79,7 @@ class DncMbPolicy_NOH(object):
 
     def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, args, reuse=False):
         nenv = nbatch // nsteps
-        X = tf.placeholder(tf.float32, shape=(nbatch, ob_space.n), name='X')  # obs
+        X = tf.placeholder(tf.float32, shape=(nbatch, len(ob_space.nvec)), name='X')  # obs
         M = tf.placeholder(tf.float32, [nbatch], name='M')  # mask (done t-1)
 
         access_config = {
@@ -93,7 +93,7 @@ class DncMbPolicy_NOH(object):
         }
 
         with tf.variable_scope("model", reuse=reuse):
-            xs = tf.reshape(X, [nenv, nsteps, ob_space.n])
+            xs = tf.reshape(X, [nenv, nsteps, len(ob_space.nvec)])
             ms = tf.reshape(M, [nenv, nsteps, 1])
             dnc_model = MaskedDNC(access_config, controller_config,
                                   args.get('num_dnc_out', 256), args.get('clip_value', 200000))

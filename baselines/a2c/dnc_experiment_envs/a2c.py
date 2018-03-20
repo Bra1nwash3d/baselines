@@ -100,7 +100,7 @@ class Runner(object):
         self.nenv = env.num_envs
         self.obs = np.zeros((self.nenv,), dtype=np.uint8)
         self.obs = env.reset()
-        self.batch_ob_shape = (self.nenv*nsteps, env.observation_space.n)
+        self.batch_ob_shape = (self.nenv*nsteps, len(env.observation_space.nvec))
         self.nc = 1
         self.gamma = gamma
         self.nsteps = nsteps
