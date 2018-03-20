@@ -192,3 +192,38 @@ def learn(policy, policy_args, env, env_args, seed, nsteps=5, total_timesteps=in
 
     model.save(save_path, save_name)
     env.close()
+
+
+def play(policy, policy_args, env, env_args, seed, nep=5, save_path='', save_name='model'):
+    tf.reset_default_graph()
+    set_global_seeds(seed)
+
+    ob_space = env.observation_space
+    ac_space = env.action_space
+
+    model = Model(policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space, nenvs=1, nsteps=1)
+    model.load(save_path, save_name)
+
+    def update_obs(obs):
+        return [obs]
+
+    if nep <= 0:
+        DNCVisualizedPlayer.player(env, model, nstack=1, env_args=env_args, player_args={
+            'dnc_exp_env': True,
+        })
+    else:
+        total_reward = 0
+        for e in range(nep):
+            done = False
+            obs = env.reset()
+            obs = update_obs(obs)
+            states = model.initial_state
+            episode_reward = 0
+            while not done:
+                actions, values, states, _ = model.step(obs, states, [done])
+                obs, reward, done, info = env.step(actions.tolist()[0])
+                obs = update_obs(obs)
+                episode_reward += reward
+                env.render()
+            print('Episode reward:', episode_reward)
+            total_reward += episode_reward
