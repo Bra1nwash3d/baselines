@@ -12,14 +12,24 @@ from baselines.a2c.utils import make_path, find_trainable_variables
 
 
 class PretrainTask():
-    def __init__(self, batch_size, obs_size, low=-1, high=1):
+    def __init__(self, batch_size, obs_size, low=-1, high=1, task_type='int'):
         self._batch_size = batch_size
         self._obs_size = obs_size
         self._low = low
         self._high = high
+        self._numbers = {
+            'int': self._int_numbers,
+            'float': self._float_numbers
+        }.get(task_type, self._int_numbers)
+
+    def _int_numbers(self, steps):
+        return np.random.randint(self._low, self._high, size=(self._batch_size, steps, self._obs_size))
+
+    def _float_numbers(self, steps):
+        return np.random.random(size=(self._batch_size, steps, self._obs_size)) * (self._high - self._low) + self._low
 
     def sample(self, steps):
-        input_ = np.random.random(size=(self._batch_size, steps, self._obs_size)) * (self._high - self._low) + self._low
+        input_ = self._numbers(steps)
         targ_f = input_
         targ_b = np.copy(input_)
         targ_b = targ_b[:, ::-1, :]
@@ -112,8 +122,8 @@ class Model(object):
         tf.global_variables_initializer().run(session=sess)
 
 
-def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100, max_len=9, start_len=4,
-          max_iterations=10e6, max_loss_to_increase=0.05, save_path='', save_name='model'):
+def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100, max_len=9, start_len=3,
+          max_iterations=10e6, max_loss_to_increase=0.2, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
     sess = tf_util.make_session()
@@ -125,7 +135,7 @@ def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100,
 
     recent_avg_len, recent_loss = 0, 0
     cur_max_len = start_len
-    task = PretrainTask(nenvs, 1)
+    task = PretrainTask(nenvs, 1, high=ob_space.n, task_type=policy_args.get('pretrain_task_type', 'int'))
     # generate models with different lengths but shared variables, easier than changing the policy
     models = [Model(sess, policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space,
                     max_grad_norm=50, nenvs=nenvs, nsteps=1, reuse=False)]
