@@ -192,8 +192,8 @@ class DncPolicy(object):
 
         with tf.variable_scope("model", reuse=reuse):
             h = nature_cnn(X)
-            xs = tf.convert_to_tensor(batch_to_seq(h, nenv, nsteps))
-            ms = batch_to_seq(M, nenv, nsteps)
+            xs = tf.reshape(h, [nenv, nsteps, -1])
+            ms = tf.reshape(M, [nenv, nsteps, -1])
             dnc_model = MaskedDNC(access_config, controller_config,
                                   args.get('num_dnc_out', 256), args.get('clip_value', 200000))
             ms = tf.subtract(tf.ones_like(ms), ms, name='mask_sub')  # previously 1 means episode is over, now 1 means it continues
@@ -205,9 +205,9 @@ class DncPolicy(object):
             h5, snew = tf.nn.dynamic_rnn(
                 cell=dnc_model,
                 inputs=dnc_input,
-                time_major=True,
+                time_major=False,
                 initial_state=S)
-            h5 = seq_to_batch(h5)
+            h5 = tf.reshape(h5, [nenv*nsteps, -1])
             pi = fc(h5, 'pi', nact)
             vf = fc(h5, 'v', 1)
 

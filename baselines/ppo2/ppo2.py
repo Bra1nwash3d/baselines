@@ -234,8 +234,8 @@ def learn(*, policy, policy_args, env, env_args, nsteps, total_timesteps, ent_co
                     mbflatinds = flatinds[mbenvinds].ravel()
                     slices = (arr[mbflatinds] for arr in (obs, returns, masks, actions, values, neglogpacs))
                     # TODO depends on lstm-like or dnc
-                    mbstates = states[mbenvinds]
-                    # mbstates = MaskedDNC.MaskedDNC.state_subset(states, mbenvinds)
+                    # mbstates = states[mbenvinds]
+                    mbstates = MaskedRNN.MaskedDNC.state_subset(states, mbenvinds)
                     mblossvals.append(model.train(lrnow, cliprangenow, *slices, mbstates))
 
         lossvals = np.mean(mblossvals, axis=0)

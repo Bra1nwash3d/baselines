@@ -34,7 +34,7 @@ def train(env_id, num_timesteps, seed, policy, policy_args, env_args, save_path)
                lam=0.95,
                gamma=0.99,
                noptepochs=4,
-               log_interval=1,
+               log_interval=10,
                ent_coef=.01,
                lr=lambda f : f * 2.5e-4,
                cliprange=lambda f : f * 0.1,
@@ -44,7 +44,7 @@ def train(env_id, num_timesteps, seed, policy, policy_args, env_args, save_path)
 
 def main():
     parser = atari_arg_parser()
-    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm'], default='cnn')
+    parser.add_argument('--policy', help='Policy architecture', choices=['cnn', 'lstm', 'lnlstm', 'dnc'], default='dnc')
     args = parser.parse_args()
 
     policy_args = {
