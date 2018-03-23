@@ -6,40 +6,9 @@ from baselines import logger
 
 from baselines.common import set_global_seeds
 from baselines.common import tf_util
+from baselines.common.DNC import PretrainTasks
 
 from baselines.a2c.utils import make_path, find_trainable_variables
-
-
-class PretrainTask():
-    def __init__(self, batch_size, obs_size, low=-1, high=1, task_type='int'):
-        self._batch_size = batch_size
-        self._obs_size = obs_size
-        self._low = low
-        self._high = high
-        self._numbers = {
-            'int': self._int_numbers,
-            'float': self._float_numbers
-        }.get(task_type, self._int_numbers)
-
-    def _int_numbers(self, steps):
-        return np.random.randint(self._low, self._high, size=(self._batch_size, steps, self._obs_size))
-
-    def _float_numbers(self, steps):
-        return np.random.random(size=(self._batch_size, steps, self._obs_size)) * (self._high - self._low) + self._low
-
-    def sample(self, steps):
-        input_ = self._numbers(steps)
-        targ_f = input_
-        targ_b = np.copy(input_)
-        targ_b = targ_b[:, ::-1, :]
-        # pad length so that backwards can be trained properly
-        zeros = np.zeros_like(input_)
-        dnc_mask = np.ones(shape=(self._batch_size, 2*steps, 1))
-        train_mask = np.concatenate((np.zeros(shape=(steps)), np.ones(shape=(steps))), axis=0)
-        input_ = np.concatenate((input_, zeros), axis=1)
-        targ_f = np.concatenate((zeros, targ_f), axis=1)
-        targ_b = np.concatenate((zeros, targ_b), axis=1)
-        return input_, dnc_mask, train_mask, targ_f, targ_b
 
 
 class Model(object):
@@ -61,7 +30,8 @@ class Model(object):
 
             TARGET_FORWARD = tf.placeholder(tf.float32, shape=train_shape)
             TARGET_BACKWARD = tf.placeholder(tf.float32, shape=train_shape)
-            MASK = tf.placeholder(tf.float32, shape=(nsteps))
+            MASK_FORWARD = tf.placeholder(tf.float32, shape=(nsteps))
+            MASK_BACKWARD = tf.placeholder(tf.float32, shape=(nsteps))
             LR = tf.placeholder(tf.float32, [])
 
             def cost(logits, target, mask):
@@ -73,7 +43,7 @@ class Model(object):
                 return tf.reduce_sum(loss_batch) / batch_size
 
             print('Creating model for length', nsteps)
-            loss = cost(targs_f, TARGET_FORWARD, MASK) + cost(targs_b, TARGET_BACKWARD, MASK)
+            loss = cost(targs_f, TARGET_FORWARD, MASK_FORWARD) + cost(targs_b, TARGET_BACKWARD, MASK_BACKWARD)
 
             params = find_trainable_variables("model")
             grads = tf.gradients(loss, params)
@@ -83,14 +53,15 @@ class Model(object):
             trainer = tf.train.RMSPropOptimizer(learning_rate=LR, decay=alpha, epsilon=epsilon, momentum=momentum)
             _train = trainer.apply_gradients(grads)
 
-        def train(obs, mask_dnc, mask_train, target_f, targets_b, lr):
+        def train(obs, mask_dnc, mask_f, mask_b, target_f, targets_b, lr):
             loss_, _ = sess.run([loss, _train], feed_dict={
                 LR: lr,
                 model_in_xs: obs,
                 model_in_ms: mask_dnc,
                 TARGET_FORWARD: target_f,
                 TARGET_BACKWARD: targets_b,
-                MASK: mask_train,
+                MASK_FORWARD: mask_f,
+                MASK_BACKWARD: mask_b,
             })
             return loss_
 
@@ -122,7 +93,7 @@ class Model(object):
 
 
 def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100, max_len=9, start_len=3,
-          max_iterations=10e6, max_loss_to_increase=0.2, save_path='', save_name='model'):
+          max_iterations=10e6, max_loss_to_increase=0.1, save_path='', save_name='model'):
     tf.reset_default_graph()
     set_global_seeds(seed)
     sess = tf_util.make_session()
@@ -133,7 +104,7 @@ def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100,
 
     recent_avg_len, recent_loss = 0, 0
     cur_max_len = start_len
-    task = PretrainTask(nenvs, len(ob_space.nvec), task_type=policy_args.get('pretrain_task_type', 'int'))
+    task = PretrainTasks.PretrainTask(nenvs, len(ob_space.nvec), task_type=policy_args.get('pretrain_task_type', 'int'))
     # generate models with different lengths but shared variables, easier than changing the policy
     models = [Model(sess, policy=policy, policy_args=policy_args, ob_space=ob_space, ac_space=ac_space,
                     max_grad_norm=50, nenvs=nenvs, nsteps=1, reuse=False)]
@@ -144,21 +115,22 @@ def learn(policy, policy_args, env, env_args, seed=0, lr=1e-4, log_interval=100,
 
     for i in range(1, int(max_iterations)):
         ran_len = np.random.randint(1, cur_max_len)
-        input_, mask_dnc, mask_train, forward_, backward_ = task.sample(ran_len)
-        l = models[ran_len].train(input_, mask_dnc, mask_train, forward_, backward_, lr)
+        input_, mask_dnc, mask_f, mask_b, forward_, backward_ = task.sample(ran_len)
+        l = models[ran_len].train(input_, mask_dnc, mask_f, mask_b, forward_, backward_, lr)
         recent_avg_len += ran_len
         recent_loss += l
 
         if i % log_interval == 0:
             avg_loss = recent_loss / log_interval
+            avg_len = recent_avg_len / log_interval
             logger.record_tabular("niterations", i)
             logger.record_tabular("max_len", cur_max_len - 1)
-            logger.record_tabular("avg_len", recent_avg_len / log_interval)
+            logger.record_tabular("avg_len", avg_len)
             logger.record_tabular("avg_loss", avg_loss)
             logger.record_tabular("lr", lr)
             logger.dump_tabular()
             models[0].save(save_path, save_name)
-            if avg_loss < max_loss_to_increase:
+            if avg_loss < (max_loss_to_increase*avg_len):
                 cur_max_len += 1
                 if cur_max_len > max_len:
                     break
