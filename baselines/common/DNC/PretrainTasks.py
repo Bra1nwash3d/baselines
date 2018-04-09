@@ -2,7 +2,7 @@ import numpy as np
 
 
 class PretrainTask():
-    def __init__(self, batch_size, obs_size, low=-1, high=1, task_type='int'):
+    def __init__(self, batch_size, obs_size, low=-1, high=1, task_type='int', twice_forward=True):
         self._batch_size = batch_size
         self._obs_size = obs_size
         self._low = low
@@ -11,6 +11,7 @@ class PretrainTask():
             'int': self._int_numbers,
             'float': self._float_numbers
         }.get(task_type, self._int_numbers)
+        self._twice_forward = twice_forward
 
     def _int_numbers(self, steps):
         return np.random.randint(self._low, self._high, size=(self._batch_size, steps, self._obs_size))
@@ -27,6 +28,8 @@ class PretrainTask():
         zeros = np.zeros_like(input_)
         dnc_mask = np.ones(shape=(self._batch_size, 2*steps, 1))
         train_f = np.ones(shape=(2*steps))
+        if not self._twice_forward:
+            train_mask_f = np.concatenate((np.zeros(shape=(steps)), np.ones(shape=(steps))), axis=0)
         train_b = np.concatenate((np.zeros(shape=(steps)), np.ones(shape=(steps))), axis=0)
         input_ = np.concatenate((input_, zeros), axis=1)
         targ_f = np.concatenate((zeros, targ_f), axis=1)
@@ -35,12 +38,13 @@ class PretrainTask():
 
 
 class PretrainTaskOneHot():
-    def __init__(self, batch_size, obs_size, ob_depth=1):
+    def __init__(self, batch_size, obs_size, ob_depth=1, twice_forward=True):
         self._batch_size = batch_size
         self._obs_size = obs_size
         self._ob_depth = ob_depth
         self._numbers = self._int_numbers
         self._eye = np.eye(ob_depth)
+        self._twice_forward = twice_forward
 
     def _int_numbers(self, steps):
         return np.random.randint(0, self._ob_depth, size=(self._batch_size, steps, self._obs_size))
@@ -53,6 +57,8 @@ class PretrainTaskOneHot():
         # pad length so that backwards can be trained properly
         dnc_mask = np.ones(shape=(self._batch_size, 2*steps, 1))
         train_mask_f = np.ones(shape=(2*steps))
+        if not self._twice_forward:
+            train_mask_f = np.concatenate((np.zeros(shape=(steps)), np.ones(shape=(steps))), axis=0)
         train_mask_b = np.concatenate((np.zeros(shape=(steps)), np.ones(shape=(steps))), axis=0)
         input_ = np.concatenate((input_, np.zeros_like(input_)), axis=1)
         targ_f = np.concatenate((targ_f, targ_f), axis=1)
