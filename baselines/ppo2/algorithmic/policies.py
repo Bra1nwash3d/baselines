@@ -1,7 +1,9 @@
 import tensorflow as tf
 from baselines.a2c.utils import fc
+import numpy as np
 from baselines.common.distributions import make_pdtype
 from baselines.common.DNC.MaskedRNN import MaskedDNC, MaskedRNNInput
+from baselines.a2c.utils import fc, batch_to_seq, seq_to_batch, lstm, lnlstm
 
 
 class AlgorithmicDncPolicy(object):
@@ -44,8 +46,6 @@ class AlgorithmicDncPolicy(object):
 
             pi = fc(h5, 'pi', sum(ac_space.nvec))
             vf = fc(h5, 'v', 1)
-            print('pi', pi)
-            print('vf', vf)
 
         self.pdtype = make_pdtype(ac_space)
         self.pd = self.pdtype.pdfromflat(pi)
@@ -74,6 +74,50 @@ class AlgorithmicDncPolicy(object):
         self.dnc_in_ms = ms
         self.dnc_in_xs = xs
         self.dnc_out = dnc_out
+
+
+class AlgorithmicLstmPolicy(object):
+    def __init__(self, sess, ob_space, ac_space, nbatch, nsteps, args, reuse=False):
+        nenv = nbatch // nsteps
+        X = tf.placeholder(tf.uint8, shape=(nbatch,), name='X')  # obs
+        M = tf.placeholder(tf.float32, [nbatch], name='M')  # mask (done t-1)
+        S = tf.placeholder(tf.float32, [nenv, args.get('nlstm', 256)*2]) #states
+
+        with tf.variable_scope("model", reuse=reuse):
+            xs = tf.reshape(X, [nenv, nsteps, 1], name='xs')
+            xs_oh = tf.one_hot(xs, ob_space.n)
+            xs_oh = tf.squeeze(xs_oh, axis=2)
+            xs_oh = batch_to_seq(xs_oh, nenv, nsteps)
+            ms = batch_to_seq(M, nenv, nsteps)
+            h5, snew = lstm(xs_oh, ms, S, 'lstm1', nh=args.get('nlstm', 256))
+            h5 = seq_to_batch(h5)
+            pi = fc(h5, 'pi', sum(ac_space.nvec))
+            vf = fc(h5, 'v', 1)
+
+        self.pdtype = make_pdtype(ac_space)
+        self.pd = self.pdtype.pdfromflat(pi)
+
+        v0 = vf[:, 0]
+        a0 = self.pd.sample()
+        neglogp0 = self.pd.neglogp(a0)
+
+        def step(ob, state, mask):
+            return sess.run([a0, v0, snew, neglogp0], {X:ob, S:state, M:mask})
+
+        def value(ob, state, mask):
+            return sess.run(v0, {X:ob, S:state, M:mask})
+
+        def initial_state():
+            return np.zeros((nenv, args.get('nlstm', 256)*2), dtype=np.float32)
+
+        self.X = X
+        self.M = M
+        self.S = S
+        self.pi = pi
+        self.vf = vf
+        self.step = step
+        self.value = value
+        self.initial_state = initial_state
 
 
 class AlgorithmicFfPolicy(object):

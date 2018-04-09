@@ -48,6 +48,8 @@ class Model(object):
             grads, _grad_norm = tf.clip_by_global_norm(grads, max_grad_norm)
         grads = list(zip(grads, params))
         trainer = tf.train.AdamOptimizer(learning_rate=LR, epsilon=1e-5)
+        # trainer = tf.train.RMSPropOptimizer(learning_rate=LR, epsilon=1e-5)
+        # trainer = tf.train.GradientDescentOptimizer(learning_rate=LR)
         _train = trainer.apply_gradients(grads)
 
         def train(lr, cliprange, obs, returns, masks, actions, values, neglogpacs, states=None):
